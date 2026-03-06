@@ -320,52 +320,52 @@ class Simulation:
                         (int(self.robot.x), int(self.robot.y)), 1)
         
         # Текстовая информация
-        info_y = 10
+        info_y = 100
         
         # Позиция робота
         info1 = self.font.render(f"Робот: ({self.robot.x:.1f}, {self.robot.y:.1f})", 
                                 True, (0, 0, 0))
-        self.screen.blit(info1, (10, info_y))
+        self.screen.blit(info1, (550, info_y))
         info_y += 25
         
         # Оценка
         error = math.sqrt((self.robot.x - est_x)**2 + (self.robot.y - est_y)**2)
         info2 = self.font.render(f"Оценка: ({est_x:.1f}, {est_y:.1f}) [ош:{error:.1f}]", 
                                 True, (0, 0, 0))
-        self.screen.blit(info2, (10, info_y))
+        self.screen.blit(info2, (550, info_y))
         info_y += 25
         
         # Частицы и разброс
         spread = self.pf.get_covariance()
         info3 = self.font.render(f"Частиц: {len(self.pf.particles)}  Разброс: {spread:.1f}", 
                                 True, (0, 0, 0))
-        self.screen.blit(info3, (10, info_y))
+        self.screen.blit(info3, (550, info_y))
         info_y += 25
         
         # Расстояние до цели
         dist_to_target = self.robot.distance_to(self.target[0], self.target[1])
         info4 = self.font.render(f"До цели: {dist_to_target:.1f} пикс.", 
                                 True, (0, 0, 0))
-        self.screen.blit(info4, (10, info_y))
+        self.screen.blit(info4, (550, info_y))
         info_y += 25
         
         # Шаг
         info5 = self.font.render(f"Шаг: {self.move_step}/{self.max_steps}", 
                                 True, (0, 0, 0))
-        self.screen.blit(info5, (10, info_y))
+        self.screen.blit(info5, (550, info_y))
         info_y += 25
         
         # Статус прибытия
         if self.robot.arrived:
-            arrived_text = self.big_font.render("🎯 ЦЕЛЬ ДОСТИГНУТА!", True, (0, 200, 0))
-            text_rect = arrived_text.get_rect(center=(WINDOW_WIDTH//2, 50))
+            arrived_text = self.big_font.render("ЦЕЛЬ ДОСТИГНУТА", True, (100, 250, 100))
+            text_rect = arrived_text.get_rect(center=(WINDOW_WIDTH//6, 30))
             self.screen.blit(arrived_text, text_rect)
         
         # Инструкции
         inst1 = self.font.render("ПРОБЕЛ: перезапуск", True, (100, 100, 100))
         inst2 = self.font.render("ESC: выход", True, (100, 100, 100))
-        self.screen.blit(inst1, (WINDOW_WIDTH - 150, 10))
-        self.screen.blit(inst2, (WINDOW_WIDTH - 150, 35))
+        self.screen.blit(inst1, (WINDOW_WIDTH - 250, 10))
+        self.screen.blit(inst2, (WINDOW_WIDTH - 250, 35))
         
         pygame.display.flip()
         
@@ -399,8 +399,8 @@ if __name__ == "__main__":
     print(f"Количество частиц: {NUM_PARTICLES}")
     print("-"*50)
     print("УПРАВЛЕНИЕ:")
-    print("  ПРОБЕЛ - перезапуск")
-    print("  ESC - выход")
+    print("ПРОБЕЛ - перезапуск")
+    print("ESC - выход")
     print("="*50)
     
     sim = Simulation()
