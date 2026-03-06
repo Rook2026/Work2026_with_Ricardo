@@ -193,9 +193,9 @@ while running:
     text_state = font.render("State: " + fsm.state, True, (255, 255, 255))
     screen.blit(text_state, (10, 10))
 
-    # # afficher compteur d'objets déposés
-    # text_count = font.render(f"Number of object deposited: {control.delivered_count}/{len(objects)}", True, (255, 255, 255))
-    # screen.blit(text_count, (10, 30))
+    # afficher compteur d'objets déposés
+    text_count = font.render(f"Number of object deposited: {control.delivered_count}/{len(objects)}", True, (255, 255, 255))
+    screen.blit(text_count, (10, 30))
 
     pygame.display.flip()
     clock.tick(60)
