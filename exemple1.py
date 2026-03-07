@@ -4,10 +4,7 @@ import math
 import heapq
 import numpy as np
 
-# ==============================
 # CONFIGURATION
-# ==============================
-
 WIDTH = 800
 HEIGHT = 600
 
@@ -24,9 +21,7 @@ pygame.display.set_caption("Autonomous Transport Robot - Maze")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 18)
 
-# ==============================
 # MAZE GENERATION
-# ==============================
 
 def generate_maze():
 
@@ -49,10 +44,8 @@ def generate_maze():
 
     return grid
 
-# ==============================
-# A* PATH PLANNING
-# ==============================
 
+# A* PATH PLANNING
 def heuristic(a, b):
     return abs(a[0]-b[0]) + abs(a[1]-b[1])
 
@@ -108,10 +101,7 @@ def astar(grid, start, goal):
 
     return []
 
-# ==============================
 # OBJECT CLASS
-# ==============================
-
 class Obj:
 
     def __init__(self, x, y):
@@ -124,10 +114,7 @@ class Obj:
             pygame.draw.circle(screen,(0,200,0),
                                self.pos.astype(int),OBJ_RADIUS)
 
-# ==============================
 # ROBOT CLASS
-# ==============================
-
 class Robot:
 
     def __init__(self,x,y):
@@ -233,19 +220,14 @@ class Robot:
             pygame.draw.circle(screen,(255,255,0),
                                p.astype(int),3)
 
-# ==============================
-# FSM
-# ==============================
 
+# FSM
 class FSM:
 
     def __init__(self):
         self.state = "Ready"
 
-# ==============================
 # CONTROL SYSTEM
-# ==============================
-
 class ControlSystem:
 
     def __init__(self,robot,objects,grid,fsm):
@@ -323,10 +305,7 @@ class ControlSystem:
             if remaining:
                 self.fsm.state = "Ready"
 
-# ==============================
 # OBJECT GENERATION
-# ==============================
-
 def generate_objects(n,grid):
 
     objs = []
@@ -348,10 +327,7 @@ def generate_objects(n,grid):
 
     return objs
 
-# ==============================
 # DRAW MAZE
-# ==============================
-
 def draw_maze(grid):
 
     for x in range(len(grid)):
@@ -362,10 +338,7 @@ def draw_maze(grid):
                 pygame.draw.rect(screen,(80,80,80),
                                  (x*CELL,y*CELL,CELL,CELL))
 
-# ==============================
 # INITIALIZATION
-# ==============================
-
 grid = generate_maze()
 
 robot = Robot(40,40)
@@ -376,10 +349,7 @@ fsm = FSM()
 
 control = ControlSystem(robot,objects,grid,fsm)
 
-# ==============================
 # MAIN LOOP
-# ==============================
-
 running = True
 
 while running:
