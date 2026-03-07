@@ -1,59 +1,123 @@
+"""
+Autonomous Transport Robot Simulation
+-------------------------------------
+
+Simulation d'un robot mobile capable de :
+- détecter les objets
+- choisir l'objet le plus proche
+- le transporter vers une zone de dépôt
+
+Architecture :
+Robot -> mouvement
+Obj -> objets à transporter
+FSM -> machine à états
+ControlSystem -> logique de décision
+
+Auteur : Simulation Robotique
+"""
+
 import pygame
 import random
 import math
 import numpy as np
 
-# CONFIG
-WIDTH = 800
-HEIGHT = 600
+# =====================================================
+# CONFIGURATION
+# =====================================================
 
-ROBOT_RADIUS = 20
-OBJ_RADIUS = 10
+WIDTH: int = 800
+HEIGHT: int = 600
+FPS: int = 60
+
+ROBOT_RADIUS: int = 20
+OBJ_RADIUS: int = 10
+
+ROBOT_SPEED: float = 2
+ROBOT_ROT_SPEED: float = 0.05
+
+NUM_OBJECTS: int = 10
 
 DROP_POINT = np.array([500, 500])
 
+
+# =====================================================
+# INITIALISATION PYGAME
+# =====================================================
+
 pygame.init()
+
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Transport Robot FSM")
+pygame.display.set_caption("Autonomous Transport Robot")
+
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 18)
 
-# OBJECT CLASS
+
+# =====================================================
+# CLASSE OBJET
+# =====================================================
+
 class Obj:
-    def __init__(self, x, y):
+    """
+    Représente un objet à transporter
+    """
+
+    def __init__(self, x: float, y: float):
+
         self.pos = np.array([x, y], dtype=float)
         self.radius = OBJ_RADIUS
         self.collected = False
 
     def draw(self, screen):
-        if not self.collected:
-            pygame.draw.circle(screen, (0, 200, 0), self.pos.astype(int), self.radius)
 
-# ROBOT CLASS
+        if not self.collected:
+
+            pygame.draw.circle(
+                screen,
+                (0, 200, 0),
+                self.pos.astype(int),
+                self.radius
+            )
+
+
+# =====================================================
+# CLASSE ROBOT
+# =====================================================
+
 class Robot:
-    def __init__(self, x, y, alpha):
+    """
+    Robot mobile avec orientation et déplacement
+    """
+
+    def __init__(self, x: float, y: float, alpha: float):
+
         self.pos = np.array([x, y], dtype=float)
         self.alpha = alpha
+
         self.radius = ROBOT_RADIUS
 
-        self.speed = 2
-        self.rot_speed = 0.05
+        self.speed = ROBOT_SPEED
+        self.rot_speed = ROBOT_ROT_SPEED
 
-        self.attachedObj = None
+        self.attached_obj = None
 
         self.path = []
 
-    def move(self, target):
+    # -------------------------------------------------
+
+    def move(self, target: np.ndarray) -> float:
+        """
+        Déplacement vers une cible
+        """
 
         error = target - self.pos
 
         dist = np.linalg.norm(error)
 
-        angle_to_target = math.atan2(error[1], error[0])
+        angle_target = math.atan2(error[1], error[0])
 
-        angle_error = angle_to_target - self.alpha
+        angle_error = angle_target - self.alpha
 
-        # Normaliser angle dans [-pi, pi]
         angle_error = (angle_error + math.pi) % (2 * math.pi) - math.pi
 
         self.alpha += angle_error * self.rot_speed
@@ -67,137 +131,233 @@ class Robot:
 
         return dist
 
+    # -------------------------------------------------
+
     def draw(self, screen):
 
-        pygame.draw.circle(screen, (0, 0, 255), self.pos.astype(int), self.radius)
+        # Corps du robot
+        pygame.draw.circle(
+            screen,
+            (0, 0, 255),
+            self.pos.astype(int),
+            self.radius
+        )
 
-        head = self.pos + np.array([
-            self.radius * math.cos(self.alpha),
-            self.radius * math.sin(self.alpha)
-        ])
+        # Triangle d'orientation
+        size = self.radius
+        angle = self.alpha
 
-        pygame.draw.line(screen, (255, 255, 0), self.pos.astype(int), head.astype(int), 3)
+        points = [
+            self.pos + np.array([math.cos(angle)*size, math.sin(angle)*size]),
+            self.pos + np.array([math.cos(angle+2.5)*size*0.6, math.sin(angle+2.5)*size*0.6]),
+            self.pos + np.array([math.cos(angle-2.5)*size*0.6, math.sin(angle-2.5)*size*0.6])
+        ]
 
-        # tracer la trajectoire
+        pygame.draw.polygon(
+            screen,
+            (255, 255, 0),
+            [p.astype(int) for p in points]
+        )
+
+        # Trajectoire du robot
         for i in range(1, len(self.path)):
-            pygame.draw.line(screen, (200, 200, 200),
-                             self.path[i - 1].astype(int),
-                             self.path[i].astype(int), 2)
 
-        if self.attachedObj:
-            self.attachedObj.pos = self.pos.copy()
+            pygame.draw.line(
+                screen,
+                (200, 200, 200),
+                self.path[i-1].astype(int),
+                self.path[i].astype(int),
+                2
+            )
+
+        if self.attached_obj:
+            self.attached_obj.pos = self.pos.copy()
 
 
+# =====================================================
+# MACHINE A ETATS (FSM)
+# =====================================================
 
-# FSM CLASS
 class FSM:
 
-    def __init__(self):
-        self.state = "Ready"
+    READY = "Ready"
+    APPROACHING = "Approaching"
+    MOVING = "Moving"
+    FINISHED = "Finished"
 
-    def set(self, state):
+    def __init__(self):
+
+        self.state = FSM.READY
+
+    def set(self, state: str):
+
         self.state = state
 
 
-# CONTROL SYSTEM (corrigé)
+# =====================================================
+# SYSTEME DE CONTROLE
+# =====================================================
+
 class ControlSystem:
-    def __init__(self, robot, objects, fsm):
+
+    def __init__(self, robot: Robot, objects: list, fsm: FSM):
+
         self.robot = robot
         self.objects = objects
         self.fsm = fsm
-        self.currentObj = None
+
+        self.current_obj = None
         self.delivered_count = 0
-        self.state_timer = 0  # nouveau : compteur de frames pour afficher Ready/Finished
+
+    # -------------------------------------------------
+
+    def get_closest_object(self):
+
+        remaining = [obj for obj in self.objects if not obj.collected]
+
+        if not remaining:
+            return None
+
+        remaining.sort(
+            key=lambda o: np.linalg.norm(o.pos - self.robot.pos)
+        )
+
+        return remaining[0]
+
+    # -------------------------------------------------
 
     def update(self):
-        #READY 
-        if self.fsm.state == "Ready":
-            self.state_timer += 1
-            # attendre quelques frames pour afficher Ready
-            if self.state_timer > 30:  # environ 0.5 sec à 60 fps
-                remaining_objects = [obj for obj in self.objects if not obj.collected]
-                if remaining_objects:
-                    remaining_objects.sort(key=lambda o: np.linalg.norm(o.pos - self.robot.pos))
-                    self.currentObj = remaining_objects[0]
-                    self.fsm.set("Approaching")
-                    self.state_timer = 0  # réinitialiser compteur
 
-        #APPROACHING 
-        elif self.fsm.state == "Approaching":
-            target = self.currentObj.pos
+        if self.fsm.state == FSM.READY:
+
+            if self.current_obj is None:
+
+                self.current_obj = self.get_closest_object()
+
+                if self.current_obj:
+                    self.fsm.set(FSM.APPROACHING)
+
+        elif self.fsm.state == FSM.APPROACHING:
+
+            target = self.current_obj.pos
+
             dist = self.robot.move(target)
+
             if dist < 25:
-                self.robot.attachedObj = self.currentObj
-                self.currentObj.collected = True
-                self.fsm.set("Moving")
 
-        #MOVING 
-        elif self.fsm.state == "Moving":
+                self.robot.attached_obj = self.current_obj
+                self.current_obj.collected = True
+
+                self.fsm.set(FSM.MOVING)
+
+        elif self.fsm.state == FSM.MOVING:
+
             dist = self.robot.move(DROP_POINT)
+
             if dist < 30:
-                self.robot.attachedObj = None
-                self.fsm.set("Finished")
+
+                self.robot.attached_obj = None
+
                 self.delivered_count += 1
-                self.currentObj = None
-                self.state_timer = 0  # démarrer timer pour afficher Finished
+                self.current_obj = None
 
-        #FINISHED 
-        elif self.fsm.state == "Finished":
-            self.state_timer += 1
-            if self.state_timer > 30:  # afficher Finished ~0.5 sec
-                remaining = any(not obj.collected for obj in self.objects)
-                if remaining:
-                    self.fsm.set("Ready")
-                self.state_timer = 0
+                self.fsm.set(FSM.FINISHED)
 
-# INITIALIZATION
-robot = Robot(100, 100, 0)
+        elif self.fsm.state == FSM.FINISHED:
 
-objects = []
+            if any(not obj.collected for obj in self.objects):
 
-for i in range(10):
+                self.fsm.set(FSM.READY)
 
-    x = random.randint(50, WIDTH - 50)
-    y = random.randint(50, HEIGHT - 50)
 
-    objects.append(Obj(x, y))
+# =====================================================
+# CREATION DES OBJETS
+# =====================================================
 
-fsm = FSM()
+def create_objects(n: int):
 
-control = ControlSystem(robot, objects, fsm)
+    objects = []
 
-# MAIN LOOP
-running = True
+    for _ in range(n):
 
-while running:
+        x = random.randint(50, WIDTH-50)
+        y = random.randint(50, HEIGHT-50)
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+        objects.append(Obj(x, y))
 
-    control.update()
+    return objects
 
-    screen.fill((30, 30, 30))
 
-    # point de dépôt
-    pygame.draw.circle(screen, (255, 0, 0), DROP_POINT.astype(int), 15)
+# =====================================================
+# PROGRAMME PRINCIPAL
+# =====================================================
 
-    # dessiner objets
-    for obj in objects:
-        obj.draw(screen)
+def main():
 
-    # dessiner robot
-    robot.draw(screen)
+    robot = Robot(100, 100, 0)
 
-    # afficher état
-    text_state = font.render("State: " + fsm.state, True, (255, 255, 255))
-    screen.blit(text_state, (10, 10))
+    objects = create_objects(NUM_OBJECTS)
 
-    # afficher compteur d'objets déposés
-    text_count = font.render(f"Number of object deposited: {control.delivered_count}/{len(objects)}", True, (255, 255, 255))
-    screen.blit(text_count, (10, 30))
+    fsm = FSM()
 
-    pygame.display.flip()
-    clock.tick(60)
+    control = ControlSystem(robot, objects, fsm)
 
-pygame.quit()
+    running = True
+
+    while running:
+
+        for event in pygame.event.get():
+
+            if event.type == pygame.QUIT:
+                running = False
+
+        control.update()
+
+        screen.fill((30, 30, 30))
+
+        # zone de dépôt
+        pygame.draw.circle(
+            screen,
+            (255, 0, 0),
+            DROP_POINT.astype(int),
+            15
+        )
+
+        # objets
+        for obj in objects:
+            obj.draw(screen)
+
+        # robot
+        robot.draw(screen)
+
+        # affichage état
+        text_state = font.render(
+            f"State : {fsm.state}",
+            True,
+            (255, 255, 255)
+        )
+
+        screen.blit(text_state, (10, 10))
+
+        # compteur
+        text_count = font.render(
+            f"Objects delivered : {control.delivered_count}/{len(objects)}",
+            True,
+            (255, 255, 255)
+        )
+
+        screen.blit(text_count, (10, 30))
+
+        pygame.display.flip()
+
+        clock.tick(FPS)
+
+    pygame.quit()
+
+
+# =====================================================
+# EXECUTION
+# =====================================================
+
+if __name__ == "__main__":
+    main()
