@@ -1,6 +1,5 @@
 """
 Autonomous Transport Robot Simulation
--------------------------------------
 
 Simulation d'un robot mobile capable de :
 - détecter les objets
@@ -13,7 +12,6 @@ Obj -> objets à transporter
 FSM -> machine à états
 ControlSystem -> logique de décision
 
-Auteur : Simulation Robotique
 """
 
 import pygame
@@ -21,9 +19,8 @@ import random
 import math
 import numpy as np
 
-# =====================================================
+
 # CONFIGURATION
-# =====================================================
 
 WIDTH: int = 800
 HEIGHT: int = 600
@@ -40,9 +37,8 @@ NUM_OBJECTS: int = 10
 DROP_POINT = np.array([500, 500])
 
 
-# =====================================================
+
 # INITIALISATION PYGAME
-# =====================================================
 
 pygame.init()
 
@@ -53,9 +49,7 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 18)
 
 
-# =====================================================
 # CLASSE OBJET
-# =====================================================
 
 class Obj:
     """
@@ -80,9 +74,7 @@ class Obj:
             )
 
 
-# =====================================================
 # CLASSE ROBOT
-# =====================================================
 
 class Robot:
     """
@@ -102,8 +94,6 @@ class Robot:
         self.attached_obj = None
 
         self.path = []
-
-    # -------------------------------------------------
 
     def move(self, target: np.ndarray) -> float:
         """
@@ -131,7 +121,6 @@ class Robot:
 
         return dist
 
-    # -------------------------------------------------
 
     def draw(self, screen):
 
@@ -173,10 +162,7 @@ class Robot:
         if self.attached_obj:
             self.attached_obj.pos = self.pos.copy()
 
-
-# =====================================================
 # MACHINE A ETATS (FSM)
-# =====================================================
 
 class FSM:
 
@@ -194,9 +180,8 @@ class FSM:
         self.state = state
 
 
-# =====================================================
+
 # SYSTEME DE CONTROLE
-# =====================================================
 
 class ControlSystem:
 
@@ -208,8 +193,6 @@ class ControlSystem:
 
         self.current_obj = None
         self.delivered_count = 0
-
-    # -------------------------------------------------
 
     def get_closest_object(self):
 
@@ -224,7 +207,6 @@ class ControlSystem:
 
         return remaining[0]
 
-    # -------------------------------------------------
 
     def update(self):
 
@@ -270,9 +252,7 @@ class ControlSystem:
                 self.fsm.set(FSM.READY)
 
 
-# =====================================================
 # CREATION DES OBJETS
-# =====================================================
 
 def create_objects(n: int):
 
@@ -288,9 +268,7 @@ def create_objects(n: int):
     return objects
 
 
-# =====================================================
 # PROGRAMME PRINCIPAL
-# =====================================================
 
 def main():
 
@@ -354,10 +332,7 @@ def main():
 
     pygame.quit()
 
-
-# =====================================================
 # EXECUTION
-# =====================================================
 
 if __name__ == "__main__":
     main()
