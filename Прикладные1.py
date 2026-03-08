@@ -2,9 +2,7 @@ import pygame
 import random
 import math
 
-# =========================
 # CONFIGURATION
-# =========================
 WIDTH, HEIGHT = 800, 600
 START = (100, 100)
 GOAL = (500, 500)
@@ -21,9 +19,9 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Expert Robot Navigation")
 clock = pygame.time.Clock()
 
-# =========================
+
 # OBSTACLE CLASS
-# =========================
+
 class Obstacle:
     def __init__(self, x, y, r=OBSTACLE_RADIUS):
         self.x = x
@@ -33,9 +31,9 @@ class Obstacle:
     def draw(self, screen):
         pygame.draw.circle(screen, (200, 0, 0), (int(self.x), int(self.y)), self.r)
 
-# =========================
+
 # LIDAR CLASS
-# =========================
+
 class Lidar:
 
     def __init__(self, robot, max_range=LIDAR_RANGE):
@@ -81,10 +79,9 @@ class Lidar:
             pygame.draw.line(screen, (0, 255, 0),
                              (self.robot.x, self.robot.y),
                              (x, y), 1)
-
-# =========================
+            
 # ROBOT CLASS
-# =========================
+
 class Robot:
 
     def __init__(self, x, y, alpha=0):
@@ -147,9 +144,8 @@ class Robot:
             pygame.draw.lines(screen, (255, 255, 0),
                               False, self.trajectory, 2)
 
-# =========================
 # CONTROL SYSTEM
-# =========================
+
 class ControlSystem:
 
     def __init__(self, robot):
@@ -196,9 +192,9 @@ class ControlSystem:
             self.robot.alpha += (goal_angle - self.robot.alpha) * 0.05
             self.robot.v = 2
 
-# =========================
+
 # CREATE OBSTACLES
-# =========================
+
 obstacles = []
 
 for i in range(NUM_OBSTACLES):
@@ -208,15 +204,15 @@ for i in range(NUM_OBSTACLES):
 
     obstacles.append(Obstacle(x, y))
 
-# =========================
+
 # INITIALIZE ROBOT
-# =========================
+
 robot = Robot(START[0], START[1], 0)
 control = ControlSystem(robot)
 
-# =========================
+
 # MAIN LOOP
-# =========================
+
 running = True
 
 while running:
@@ -239,9 +235,8 @@ while running:
 
     else:
         robot.v = 0
-    # =====================
+
     # DRAW
-    # =====================
     screen.fill((30, 30, 30))
 
     # goal
