@@ -208,11 +208,11 @@ class Robot:
             math.sin(self.angle-math.pi/2)*offset
         ])
 
-        pygame.draw.rect(screen,(30,30,30),
-                         (left[0]-4,left[1]-8,8,16))
+        pygame.draw.rect(screen,(255, 255, 0),
+                         (left[0]-4,left[1]-8,6,10))
 
-        pygame.draw.rect(screen,(30,30,30),
-                         (right[0]-4,right[1]-8,8,16))
+        pygame.draw.rect(screen,(255, 255, 0),
+                         (right[0]-4,right[1]-8,6,10))
 
         # chemin A*
         for p in self.path_pixels:
