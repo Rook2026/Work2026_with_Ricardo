@@ -5,436 +5,504 @@ import heapq
 from typing import List, Tuple, Set
 import sys
 
-# Initialize pygame
+# Инициализация pygame
 pygame.init()
 
-# Constants
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
-BACKGROUND_COLOR = (255, 255, 255)
-ROBOT_COLOR = (0, 255, 0)
-GOAL_COLOR = (255, 0, 0)
-OBSTACLE_COLOR = (100, 100, 100)
-OBSTACLE_BORDER = (0, 0, 0)
-PATH_COLOR = (255, 0, 255)
-VISIBILITY_EDGE_COLOR = (200, 200, 200)
-NODE_COLOR = (0, 0, 255)
-NODE_RADIUS = 3
+# Константы
+ШИРИНА_ОКНА = 800
+ВЫСОТА_ОКНА = 600
+ЦВЕТ_ФОНА = (255, 255, 255)
+ЦВЕТ_РОБОТА = (0, 255, 0)
+ЦВЕТ_ЦЕЛИ = (255, 0, 0)
+ЦВЕТ_ПРЕПЯТСТВИЯ = (100, 100, 100)
+ЦВЕТ_ГРАНИЦЫ_ПРЕПЯТСТВИЯ = (0, 0, 0)
+ЦВЕТ_ПУТИ = (255, 0, 255)
+ЦВЕТ_РЕБРА_ВИДИМОСТИ = (200, 200, 200)
+ЦВЕТ_УЗЛА = (0, 0, 255)
+РАДИУС_УЗЛА = 3
 
-class Point:
-    """Helper class for 2D points"""
+class Точка:
+    """Вспомогательный класс для 2D точек"""
     def __init__(self, x, y):
         self.x = x
         self.y = y
     
-    def distance_to(self, other):
-        return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+    def расстояние_до(self, другая):
+        return math.sqrt((self.x - другая.x)**2 + (self.y - другая.y)**2)
     
-    def __eq__(self, other):
-        return self.x == other.x and self.y == other.y
+    def __eq__(self, другая):
+        return self.x == другая.x and self.y == другая.y
     
     def __hash__(self):
         return hash((self.x, self.y))
 
-class Robot:
-    """Mobile robot class with coordinates"""
+class Робот:
+    """Класс мобильного робота с координатами"""
     def __init__(self, x, y):
-        self.position = Point(x, y)
+        self.позиция = Точка(x, y)
     
-    def get_position(self):
-        return self.position
+    def получить_позицию(self):
+        return self.позиция
 
-class Obstacle:
-    """Obstacle defined by list of points (polygon)"""
-    def __init__(self, points: List[Point]):
-        self.points = points
-        self.edges = []
-        # Create edges from points
-        for i in range(len(points)):
-            self.edges.append((points[i], points[(i + 1) % len(points)]))
+class Препятствие:
+    """Препятствие, определяемое списком точек (многоугольник)"""
+    def __init__(self, точки: List[Точка]):
+        self.точки = точки
+        self.ребра = []
+        # Создание ребер из точек
+        for i in range(len(точки)):
+            self.ребра.append((точки[i], точки[(i + 1) % len(точки)]))
     
-    def contains_point(self, point: Point) -> bool:
-        """Check if point is inside the polygon using ray casting algorithm"""
-        inside = False
-        n = len(self.points)
+    def содержит_точку(self, точка: Точка) -> bool:
+        """Проверяет, находится ли точка внутри многоугольника (алгоритм лучевого трассирования)"""
+        внутри = False
+        n = len(self.точки)
         for i in range(n):
-            p1 = self.points[i]
-            p2 = self.points[(i + 1) % n]
-            if ((p1.y > point.y) != (p2.y > point.y)) and \
-               (point.x < (p2.x - p1.x) * (point.y - p1.y) / (p2.y - p1.y) + p1.x):
-                inside = not inside
-        return inside
+            p1 = self.точки[i]
+            p2 = self.точки[(i + 1) % n]
+            if ((p1.y > точка.y) != (p2.y > точка.y)) and \
+               (точка.x < (p2.x - p1.x) * (точка.y - p1.y) / (p2.y - p1.y) + p1.x):
+                внутри = not внутри
+        return внутри
     
-    def draw(self, screen):
-        """Draw obstacle on screen"""
-        if len(self.points) < 3:
+    def нарисовать(self, экран):
+        """Рисует препятствие на экране"""
+        if len(self.точки) < 3:
             return
-        points = [(p.x, p.y) for p in self.points]
-        pygame.draw.polygon(screen, OBSTACLE_COLOR, points)
-        pygame.draw.polygon(screen, OBSTACLE_BORDER, points, 2)
+        точки = [(т.x, т.y) for т in self.точки]
+        pygame.draw.polygon(экран, ЦВЕТ_ПРЕПЯТСТВИЯ, точки)
+        pygame.draw.polygon(экран, ЦВЕТ_ГРАНИЦЫ_ПРЕПЯТСТВИЯ, точки, 2)
 
-class Node:
-    """Node for visibility graph with incoming and outgoing edges"""
-    def __init__(self, point: Point, node_type="vertex"):
-        self.point = point
-        self.node_type = node_type  # "start", "goal", or "vertex"
-        self.incoming_edges = []  # List of nodes that have edge to this node
-        self.outgoing_edges = []  # List of nodes this node has edge to
-        self.cost = float('inf')
-        self.previous = None
+class Узел:
+    """Узел графа видимости с входящими и исходящими дугами"""
+    def __init__(self, точка: Точка, тип_узла="вершина"):
+        self.точка = точка
+        self.тип_узла = тип_узла  # "старт", "цель" или "вершина"
+        self.входящие_ребра = []   # Список узлов, имеющих ребро к этому узлу
+        self.исходящие_ребра = []  # Список узлов, к которым этот узел имеет ребро
+        self.стоимость = float('inf')
+        self.предыдущий = None
     
-    def add_edge(self, target_node, cost):
-        """Add outgoing edge to target node"""
-        self.outgoing_edges.append((target_node, cost))
-        target_node.incoming_edges.append((self, cost))
+    def добавить_ребро(self, целевой_узел, стоимость):
+        """Добавляет исходящее ребро к целевому узлу"""
+        self.исходящие_ребра.append((целевой_узел, стоимость))
+        целевой_узел.входящие_ребра.append((self, стоимость))
     
-    def __lt__(self, other):
-        return self.cost < other.cost
+    def __lt__(self, другой):
+        return self.стоимость < другой.стоимость
 
-class Graph:
-    """Visibility graph containing nodes and edges"""
+class Граф:
+    """Граф видимости, содержащий узлы и ребра"""
     def __init__(self):
-        self.nodes = []
-        self.start_node = None
-        self.goal_node = None
+        self.узлы = []
+        self.стартовый_узел = None
+        self.целевой_узел = None
     
-    def add_node(self, node: Node):
-        self.nodes.append(node)
+    def добавить_узел(self, узел: Узел):
+        self.узлы.append(узел)
     
-    def find_shortest_path(self) -> List[Node]:
-        """Find shortest path using Dijkstra's algorithm"""
-        if not self.start_node or not self.goal_node:
+    def найти_кратчайший_путь(self) -> List[Узел]:
+        """Находит кратчайший путь с помощью алгоритма Дейкстры"""
+        if not self.стартовый_узел or not self.целевой_узел:
             return []
         
-        # Reset costs and previous nodes
-        for node in self.nodes:
-            node.cost = float('inf')
-            node.previous = None
+        # Сброс стоимостей и предыдущих узлов
+        for узел in self.узлы:
+            узел.стоимость = float('inf')
+            узел.предыдущий = None
         
-        self.start_node.cost = 0
-        priority_queue = [(0, self.start_node)]
+        self.стартовый_узел.стоимость = 0
+        очередь_приоритетов = [(0, self.стартовый_узел)]
         
-        while priority_queue:
-            current_cost, current_node = heapq.heappop(priority_queue)
+        while очередь_приоритетов:
+            текущая_стоимость, текущий_узел = heapq.heappop(очередь_приоритетов)
             
-            if current_node == self.goal_node:
+            if текущий_узел == self.целевой_узел:
                 break
             
-            if current_cost > current_node.cost:
+            if текущая_стоимость > текущий_узел.стоимость:
                 continue
             
-            for neighbor, edge_cost in current_node.outgoing_edges:
-                new_cost = current_node.cost + edge_cost
-                if new_cost < neighbor.cost:
-                    neighbor.cost = new_cost
-                    neighbor.previous = current_node
-                    heapq.heappush(priority_queue, (new_cost, neighbor))
+            for сосед, стоимость_ребра in текущий_узел.исходящие_ребра:
+                новая_стоимость = текущий_узел.стоимость + стоимость_ребра
+                if новая_стоимость < сосед.стоимость:
+                    сосед.стоимость = новая_стоимость
+                    сосед.предыдущий = текущий_узел
+                    heapq.heappush(очередь_приоритетов, (новая_стоимость, сосед))
         
-        # Reconstruct path
-        path = []
-        current = self.goal_node
-        while current:
-            path.append(current)
-            current = current.previous
-        path.reverse()
+        # Восстановление пути
+        путь = []
+        текущий = self.целевой_узел
+        while текущий:
+            путь.append(текущий)
+            текущий = текущий.предыдущий
+        путь.reverse()
         
-        return path if path and path[0] == self.start_node else []
+        return путь if путь and путь[0] == self.стартовый_узел else []
     
-    def draw(self, screen, show_edges=True):
-        """Draw graph nodes and edges"""
-        if show_edges:
-            for node in self.nodes:
-                for neighbor, _ in node.outgoing_edges:
-                    pygame.draw.line(screen, VISIBILITY_EDGE_COLOR, 
-                                   (node.point.x, node.point.y), 
-                                   (neighbor.point.x, neighbor.point.y), 1)
+    def нарисовать(self, экран, показывать_ребра=True):
+        """Рисует граф (узлы и ребра)"""
+        if показывать_ребра:
+            for узел in self.узлы:
+                for сосед, _ in узел.исходящие_ребра:
+                    pygame.draw.line(экран, ЦВЕТ_РЕБРА_ВИДИМОСТИ, 
+                                   (узел.точка.x, узел.точка.y), 
+                                   (сосед.точка.x, сосед.точка.y), 1)
         
-        for node in self.nodes:
-            color = NODE_COLOR
-            if node == self.start_node:
-                color = ROBOT_COLOR
-            elif node == self.goal_node:
-                color = GOAL_COLOR
-            pygame.draw.circle(screen, color, 
-                             (int(node.point.x), int(node.point.y)), 
-                             NODE_RADIUS)
+        for узел in self.узлы:
+            цвет = ЦВЕТ_УЗЛА
+            if узел == self.стартовый_узел:
+                цвет = ЦВЕТ_РОБОТА
+            elif узел == self.целевой_узел:
+                цвет = ЦВЕТ_ЦЕЛИ
+            pygame.draw.circle(экран, цвет, 
+                             (int(узел.точка.x), int(узел.точка.y)), 
+                             РАДИУС_УЗЛА)
 
-def point_on_segment(p: Point, a: Point, b: Point) -> bool:
-    """Check if point p lies on segment ab"""
-    cross = (p.y - a.y) * (b.x - a.x) - (p.x - a.x) * (b.y - a.y)
-    if abs(cross) > 1e-9:
+def точка_на_отрезке(p: Точка, a: Точка, b: Точка) -> bool:
+    """Проверяет, лежит ли точка p на отрезке ab"""
+    векторное_произведение = (p.y - a.y) * (b.x - a.x) - (p.x - a.x) * (b.y - a.y)
+    if abs(векторное_произведение) > 1e-9:
         return False
-    dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)
-    if dot < 0:
+    скалярное_произведение = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)
+    if скалярное_произведение < 0:
         return False
-    squared_len = (b.x - a.x)**2 + (b.y - a.y)**2
-    if dot > squared_len:
+    квадрат_длины = (b.x - a.x)**2 + (b.y - a.y)**2
+    if скалярное_произведение > квадрат_длины:
         return False
     return True
 
-def segments_intersect(p1: Point, p2: Point, p3: Point, p4: Point) -> bool:
-    """Check if two segments intersect"""
-    def orientation(p, q, r):
+def отрезки_пересекаются(p1: Точка, p2: Точка, p3: Точка, p4: Точка) -> bool:
+    """Проверяет, пересекаются ли два отрезка"""
+    def ориентация(p, q, r):
         val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y)
         if abs(val) < 1e-9:
             return 0
         return 1 if val > 0 else 2
     
-    o1 = orientation(p1, p2, p3)
-    o2 = orientation(p1, p2, p4)
-    o3 = orientation(p3, p4, p1)
-    o4 = orientation(p3, p4, p2)
+    o1 = ориентация(p1, p2, p3)
+    o2 = ориентация(p1, p2, p4)
+    o3 = ориентация(p3, p4, p1)
+    o4 = ориентация(p3, p4, p2)
     
     if o1 != o2 and o3 != o4:
         return True
     
-    if o1 == 0 and point_on_segment(p3, p1, p2):
+    if o1 == 0 and точка_на_отрезке(p3, p1, p2):
         return True
-    if o2 == 0 and point_on_segment(p4, p1, p2):
+    if o2 == 0 and точка_на_отрезке(p4, p1, p2):
         return True
-    if o3 == 0 and point_on_segment(p1, p3, p4):
+    if o3 == 0 and точка_на_отрезке(p1, p3, p4):
         return True
-    if o4 == 0 and point_on_segment(p2, p3, p4):
+    if o4 == 0 and точка_на_отрезке(p2, p3, p4):
         return True
     
     return False
 
-def segment_intersects_obstacle(p1: Point, p2: Point, obstacles: List[Obstacle]) -> bool:
-    """Check if segment intersects any obstacle"""
-    for obstacle in obstacles:
-        for edge in obstacle.edges:
-            if segments_intersect(p1, p2, edge[0], edge[1]):
-                # Check if intersection is at endpoints
-                if (p1 == edge[0] or p1 == edge[1] or 
-                    p2 == edge[0] or p2 == edge[1]):
+def отрезок_пересекает_препятствие(p1: Точка, p2: Точка, препятствия: List[Препятствие]) -> bool:
+    """Проверяет, пересекает ли отрезок какое-либо препятствие"""
+    for препятствие in препятствия:
+        for ребро in препятствие.ребра:
+            if отрезки_пересекаются(p1, p2, ребро[0], ребро[1]):
+                # Проверка, не находится ли пересечение на концах
+                if (p1 == ребро[0] or p1 == ребро[1] or 
+                    p2 == ребро[0] or p2 == ребро[1]):
                     continue
                 return True
     return False
 
-def is_visible_from_vertex(point: Point, vertex: Point, obstacles: List[Obstacle], 
-                          obstacle_points: Set[Point]) -> bool:
-    """Check if point is visible from vertex"""
-    if point == vertex:
-        return False
+def сгенерировать_случайный_многоугольник(x_min, x_max, y_min, y_max, кол_вершин=5):
+    """Генерирует случайный выпуклый многоугольник"""
+    точки = []
+    центр_x = random.uniform(x_min, x_max)
+    центр_y = random.uniform(y_min, y_max)
+    радиус = random.uniform(30, 60)
     
-    # Check if line passes through any obstacle
-    if segment_intersects_obstacle(point, vertex, obstacles):
-        return False
+    углы = sorted([random.uniform(0, 2 * math.pi) for _ in range(кол_вершин)])
     
-    return True
+    for угол in углы:
+        r = радиус * random.uniform(0.8, 1.2)
+        x = центр_x + r * math.cos(угол)
+        y = центр_y + r * math.sin(угол)
+        точки.append(Точка(x, y))
+    
+    return точки
 
-def generate_random_polygon(x_min, x_max, y_min, y_max, num_vertices=5):
-    """Generate random convex polygon"""
-    points = []
-    center_x = random.uniform(x_min, x_max)
-    center_y = random.uniform(y_min, y_max)
-    radius = random.uniform(30, 60)
+def построить_граф_видимости(старт: Точка, цель: Точка, препятствия: List[Препятствие]) -> Граф:
+    """Строит граф видимости из начальной и целевой точек и препятствий"""
+    граф = Граф()
     
-    angles = sorted([random.uniform(0, 2 * math.pi) for _ in range(num_vertices)])
+    # Сбор всех вершин
+    вершины = [старт, цель]
+    точки_препятствий = set()
     
-    for angle in angles:
-        r = radius * random.uniform(0.8, 1.2)
-        x = center_x + r * math.cos(angle)
-        y = center_y + r * math.sin(angle)
-        points.append(Point(x, y))
+    for препятствие in препятствия:
+        for точка in препятствие.точки:
+            вершины.append(точка)
+            точки_препятствий.add(точка)
     
-    return points
-
-def build_visibility_graph(start: Point, goal: Point, obstacles: List[Obstacle]) -> Graph:
-    """Build visibility graph from start and goal points and obstacles"""
-    graph = Graph()
-    
-    # Collect all vertices
-    vertices = [start, goal]
-    obstacle_points = set()
-    
-    for obstacle in obstacles:
-        for point in obstacle.points:
-            vertices.append(point)
-            obstacle_points.add(point)
-    
-    # Create nodes for all vertices
-    nodes_dict = {}
-    for vertex in vertices:
-        node_type = "vertex"
-        if vertex == start:
-            node_type = "start"
-        elif vertex == goal:
-            node_type = "goal"
-        node = Node(vertex, node_type)
-        nodes_dict[vertex] = node
-        graph.add_node(node)
+    # Создание узлов для всех вершин
+    узлы_словарь = {}
+    for вершина in вершины:
+        тип_узла = "вершина"
+        if вершина == старт:
+            тип_узла = "старт"
+        elif вершина == цель:
+            тип_узла = "цель"
+        узел = Узел(вершина, тип_узла)
+        узлы_словарь[вершина] = узел
+        граф.добавить_узел(узел)
         
-        if node_type == "start":
-            graph.start_node = node
-        elif node_type == "goal":
-            graph.goal_node = node
+        if тип_узла == "старт":
+            граф.стартовый_узел = узел
+        elif тип_узла == "цель":
+            граф.целевой_узел = узел
     
-    # Check visibility between all pairs of vertices
-    for i, v1 in enumerate(vertices):
-        for j, v2 in enumerate(vertices):
+    # Проверка видимости между всеми парами вершин
+    for i, в1 in enumerate(вершины):
+        for j, в2 in enumerate(вершины):
             if i >= j:
                 continue
             
-            # Check if segment is visible
-            visible = True
+            # Проверка, видим ли отрезок
+            видимый = True
             
-            # Check if line goes through obstacles
-            if segment_intersects_obstacle(v1, v2, obstacles):
-                visible = False
+            # Проверка, проходит ли линия через препятствия
+            if отрезок_пересекает_препятствие(в1, в2, препятствия):
+                видимый = False
             
-            # Check if either endpoint is inside an obstacle
-            for obstacle in obstacles:
-                if (obstacle.contains_point(v1) or obstacle.contains_point(v2)):
-                    visible = False
+            # Проверка, не находится ли какая-либо конечная точка внутри препятствия
+            for препятствие in препятствия:
+                if (препятствие.содержит_точку(в1) or препятствие.содержит_точку(в2)):
+                    видимый = False
                     break
             
-            if visible:
-                cost = v1.distance_to(v2)
-                nodes_dict[v1].add_edge(nodes_dict[v2], cost)
-                nodes_dict[v2].add_edge(nodes_dict[v1], cost)
+            if видимый:
+                стоимость = в1.расстояние_до(в2)
+                узлы_словарь[в1].добавить_ребро(узлы_словарь[в2], стоимость)
+                узлы_словарь[в2].добавить_ребро(узлы_словарь[в1], стоимость)
     
-    return graph
+    return граф
 
-def generate_obstacles(num_obstacles=5):
-    """Generate random obstacles"""
-    obstacles = []
-    min_distance_from_start_goal = 50
-    start = Point(100, 100)
-    goal = Point(500, 500)
+def сгенерировать_препятствия(кол_препятствий=5):
+    """Генерирует случайные препятствия"""
+    препятствия = []
+    старт = Точка(100, 100)
+    цель = Точка(500, 500)
     
-    for _ in range(num_obstacles):
+    for _ in range(кол_препятствий):
         while True:
-            # Generate polygon in valid area
-            x_min = random.uniform(50, WINDOW_WIDTH - 50)
+            # Генерация многоугольника в допустимой области
+            x_min = random.uniform(50, ШИРИНА_ОКНА - 50)
             x_max = x_min + random.uniform(50, 100)
-            y_min = random.uniform(50, WINDOW_HEIGHT - 50)
+            y_min = random.uniform(50, ВЫСОТА_ОКНА - 50)
             y_max = y_min + random.uniform(50, 100)
             
-            # Adjust to keep within bounds
-            x_min = max(50, min(x_min, WINDOW_WIDTH - 100))
-            x_max = min(WINDOW_WIDTH - 50, max(x_max, x_min + 50))
-            y_min = max(50, min(y_min, WINDOW_HEIGHT - 100))
-            y_max = min(WINDOW_HEIGHT - 50, max(y_max, y_min + 50))
+            # Корректировка для соблюдения границ
+            x_min = max(50, min(x_min, ШИРИНА_ОКНА - 100))
+            x_max = min(ШИРИНА_ОКНА - 50, max(x_max, x_min + 50))
+            y_min = max(50, min(y_min, ВЫСОТА_ОКНА - 100))
+            y_max = min(ВЫСОТА_ОКНА - 50, max(y_max, y_min + 50))
             
-            points = generate_random_polygon(x_min, x_max, y_min, y_max)
-            obstacle = Obstacle(points)
+            точки = сгенерировать_случайный_многоугольник(x_min, x_max, y_min, y_max)
+            препятствие = Препятствие(точки)
             
-            # Check if obstacle doesn't contain start or goal
-            if not obstacle.contains_point(start) and not obstacle.contains_point(goal):
-                # Check if obstacle doesn't overlap too much with others
-                overlap = False
-                for existing in obstacles:
-                    # Simple overlap check - check if any point is inside existing obstacle
-                    for point in points:
-                        if existing.contains_point(point):
-                            overlap = True
+            # Проверка, что препятствие не содержит старт или цель
+            if not препятствие.содержит_точку(старт) and not препятствие.содержит_точку(цель):
+                # Проверка перекрытия с существующими препятствиями
+                перекрытие = False
+                for существующее in препятствия:
+                    for точка in точки:
+                        if существующее.содержит_точку(точка):
+                            перекрытие = True
                             break
-                    if overlap:
+                    if перекрытие:
                         break
                 
-                if not overlap:
-                    obstacles.append(obstacle)
+                if not перекрытие:
+                    препятствия.append(препятствие)
                     break
     
-    return obstacles
+    return препятствия
 
-def draw_robot(screen, robot: Robot):
-    """Draw robot"""
-    pos = robot.get_position()
-    pygame.draw.circle(screen, ROBOT_COLOR, (int(pos.x), int(pos.y)), 8)
-    pygame.draw.circle(screen, (0, 0, 0), (int(pos.x), int(pos.y)), 8, 2)
+def нарисовать_робота(экран, робот: Робот):
+    """Рисует робота"""
+    позиция = робот.получить_позицию()
+    pygame.draw.circle(экран, ЦВЕТ_РОБОТА, (int(позиция.x), int(позиция.y)), 8)
+    pygame.draw.circle(экран, (0, 0, 0), (int(позиция.x), int(позиция.y)), 8, 2)
 
-def draw_goal(screen, goal: Point):
-    """Draw goal point"""
-    pygame.draw.circle(screen, GOAL_COLOR, (int(goal.x), int(goal.y)), 10)
-    pygame.draw.circle(screen, (0, 0, 0), (int(goal.x), int(goal.y)), 10, 2)
+def нарисовать_цель(экран, цель: Точка):
+    """Рисует целевую точку"""
+    pygame.draw.circle(экран, ЦВЕТ_ЦЕЛИ, (int(цель.x), int(цель.y)), 10)
+    pygame.draw.circle(экран, (0, 0, 0), (int(цель.x), int(цель.y)), 10, 2)
 
-def draw_path(screen, path: List[Node]):
-    """Draw the found path"""
-    if not path:
+def нарисовать_путь(экран, путь: List[Узел]):
+    """Рисует найденный путь"""
+    if not путь:
         return
     
-    points = [(node.point.x, node.point.y) for node in path]
-    if len(points) > 1:
-        pygame.draw.lines(screen, PATH_COLOR, False, points, 3)
+    точки = [(узел.точка.x, узел.точка.y) for узел in путь]
+    if len(точки) > 1:
+        pygame.draw.lines(экран, ЦВЕТ_ПУТИ, False, точки, 3)
 
-def main():
-    """Main function"""
-    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("Robot Path Planning - Visibility Graph")
-    clock = pygame.time.Clock()
+def показать_статистику(экран, путь: List[Узел], граф: Граф):
+    """Показывает статистику непосредственно в окне"""
+    шрифт = pygame.font.Font(None, 24)
+    шрифт_малый = pygame.font.Font(None, 18)
     
-    # Initialize start and goal
-    start = Point(100, 100)
-    goal = Point(500, 500)
-    robot = Robot(start.x, start.y)
+    # Полупрозрачный фон для лучшей читаемости
+    # Фон
+    pygame.draw.rect(экран, (240, 240, 240), (ШИРИНА_ОКНА - 120, 5, 115, 130))
+    pygame.draw.rect(экран, (200, 200, 200), (ШИРИНА_ОКНА - 120, 5, 115, 130), 1)
     
-    # Generate obstacles
-    obstacles = generate_obstacles(5)
+    # # Заголовок
+    # заголовок = шрифт.render("Статистика", True, (0, 0, 0))
+    # экран.blit(заголовок, (10, 8))
+
+    # Подсказка по клавишам
+    текст = шрифт_малый.render("ПРОБЕЛ: ребра | R: новые препятствия", True, (0, 0, 0))
+    экран.blit(текст, (10, 8))
+
+    # Количество узлов
+    текст = шрифт_малый.render(f"Узлов: {len(граф.узлы)}", True, (0, 0, 0))
+    экран.blit(текст, (10, 35))
     
-    # Build visibility graph
-    print("Building visibility graph...")
-    graph = build_visibility_graph(start, goal, obstacles)
-    print(f"Graph built with {len(graph.nodes)} nodes")
-    
-    # Find shortest path
-    print("Finding shortest path...")
-    path = graph.find_shortest_path()
-    if path:
-        print(f"Path found with {len(path)} waypoints")
-        total_distance = 0
-        for i in range(len(path) - 1):
-            total_distance += path[i].point.distance_to(path[i+1].point)
-        print(f"Total path distance: {total_distance:.2f} pixels")
+    # Информация о пути
+    if путь:
+        # Вычисление общего расстояния
+        общее_расстояние = 0
+        for i in range(len(путь) - 1):
+            общее_расстояние += путь[i].точка.расстояние_до(путь[i+1].точка)
+        
+        текст = шрифт_малый.render(f"Точек пути: {len(путь)}", True, (0, 0, 0))
+        экран.blit(текст, (10, 55))
+        
+        текст = шрифт_малый.render(f"Расстояние: {общее_расстояние:.1f} px", True, (0, 0, 0))
+        экран.blit(текст, (10, 75))
     else:
-        print("No path found!")
+        текст = шрифт_малый.render("ПУТЬ НЕ НАЙДЕН", True, (255, 0, 0))
+        экран.blit(текст, (10, 55))
+        текст = шрифт_малый.render("Нажмите R для регенерации", True, (255, 0, 0))
+        экран.blit(текст, (10, 75))
+
+def показать_легенду(экран):
+    """Показывает легенду цветов"""
+    шрифт = pygame.font.Font(None, 18)
     
-    # Main loop
-    running = True
-    show_edges = False
+    # Фон
+    pygame.draw.rect(экран, (240, 240, 240), (ШИРИНА_ОКНА - 120, 5, 115, 130))
+    pygame.draw.rect(экран, (200, 200, 200), (ШИРИНА_ОКНА - 120, 5, 115, 130), 1)
     
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    show_edges = not show_edges
-                    print(f"Visibility edges: {'ON' if show_edges else 'OFF'}")
-                elif event.key == pygame.K_r:
-                    # Regenerate obstacles and path
-                    obstacles = generate_obstacles(5)
-                    graph = build_visibility_graph(start, goal, obstacles)
-                    path = graph.find_shortest_path()
-                    if path:
-                        print("New path found!")
+    # Заголовок
+    заголовок = шрифт.render("Легенда", True, (0, 0, 0))
+    экран.blit(заголовок, (ШИРИНА_ОКНА - 110, 8))
+    
+    # Цвета
+    y = 32
+    pygame.draw.circle(экран, ЦВЕТ_РОБОТА, (ШИРИНА_ОКНА - 100, y + 5), 6)
+    текст = шрифт.render("Старт", True, (0, 0, 0))
+    экран.blit(текст, (ШИРИНА_ОКНА - 80, y))
+    
+    y += 22
+    pygame.draw.circle(экран, ЦВЕТ_ЦЕЛИ, (ШИРИНА_ОКНА - 100, y + 5), 6)
+    текст = шрифт.render("Цель", True, (0, 0, 0))
+    экран.blit(текст, (ШИРИНА_ОКНА - 80, y))
+    
+    y += 22
+    pygame.draw.circle(экран, ЦВЕТ_УЗЛА, (ШИРИНА_ОКНА - 100, y + 5), 3)
+    текст = шрифт.render("Узлы", True, (0, 0, 0))
+    экран.blit(текст, (ШИРИНА_ОКНА - 80, y))
+    
+    y += 22
+    pygame.draw.line(экран, ЦВЕТ_ПУТИ, (ШИРИНА_ОКНА - 105, y + 5), 
+                     (ШИРИНА_ОКНА - 85, y + 5), 3)
+    текст = шрифт.render("Путь", True, (0, 0, 0))
+    экран.blit(текст, (ШИРИНА_ОКНА - 80, y))
+
+def главная():
+    """Главная функция"""
+    экран = pygame.display.set_mode((ШИРИНА_ОКНА, ВЫСОТА_ОКНА))
+    pygame.display.set_caption("Планирование траектории - Граф видимости")
+    часы = pygame.time.Clock()
+    
+    # Инициализация старта и цели
+    старт = Точка(100, 100)
+    цель = Точка(500, 500)
+    робот = Робот(старт.x, старт.y)
+    
+    # Генерация препятствий
+    препятствия = сгенерировать_препятствия(5)
+    
+    # Построение графа видимости
+    print("Построение графа видимости...")
+    граф = построить_граф_видимости(старт, цель, препятствия)
+    print(f"Граф построен с {len(граф.узлы)} узлами")
+    
+    # Поиск кратчайшего пути
+    print("Поиск оптимального пути...")
+    путь = граф.найти_кратчайший_путь()
+    if путь:
+        print(f"Путь найден с {len(путь)} точками")
+        общее_расстояние = 0
+        for i in range(len(путь) - 1):
+            общее_расстояние += путь[i].точка.расстояние_до(путь[i+1].точка)
+        print(f"Общее расстояние пути: {общее_расстояние:.2f} пикселей")
+    else:
+        print("Путь не найден!")
+    
+    # Основной цикл
+    работает = True
+    показывать_ребра = False
+    
+    while работает:
+        for событие in pygame.event.get():
+            if событие.type == pygame.QUIT:
+                работает = False
+            elif событие.type == pygame.KEYDOWN:
+                if событие.key == pygame.K_SPACE:
+                    показывать_ребра = not показывать_ребра
+                    print(f"Ребра видимости: {'ВКЛЮЧЕНЫ' if показывать_ребра else 'ВЫКЛЮЧЕНЫ'}")
+                elif событие.key == pygame.K_r:
+                    # Регенерация препятствий и пути
+                    print("Генерация новых препятствий...")
+                    препятствия = сгенерировать_препятствия(5)
+                    граф = построить_граф_видимости(старт, цель, препятствия)
+                    путь = граф.найти_кратчайший_путь()
+                    if путь:
+                        общее_расстояние = 0
+                        for i in range(len(путь) - 1):
+                            общее_расстояние += путь[i].точка.расстояние_до(путь[i+1].точка)
+                        print(f"Новый путь найден! Расстояние: {общее_расстояние:.2f} px")
                     else:
-                        print("No path found with new obstacles!")
+                        print("Путь не найден с новыми препятствиями!")
         
-        # Clear screen
-        screen.fill(BACKGROUND_COLOR)
+        # Очистка экрана
+        экран.fill(ЦВЕТ_ФОНА)
         
-        # Draw obstacles
-        for obstacle in obstacles:
-            obstacle.draw(screen)
+        # Рисование препятствий
+        for препятствие in препятствия:
+            препятствие.нарисовать(экран)
         
-        # Draw visibility graph
-        graph.draw(screen, show_edges)
+        # Рисование графа видимости
+        граф.нарисовать(экран, показывать_ребра)
         
-        # Draw start and goal
-        draw_robot(screen, robot)
-        draw_goal(screen, goal)
+        # Рисование старта и цели
+        нарисовать_робота(экран, робот)
+        нарисовать_цель(экран, цель)
         
-        # Draw path
-        draw_path(screen, path)
+        # Рисование пути
+        нарисовать_путь(экран, путь)
         
-        # Update display
+        # Показать статистику и легенду
+        показать_статистику(экран, путь, граф)
+        показать_легенду(экран)
+        
+        # Обновление дисплея
         pygame.display.flip()
-        clock.tick(60)
+        часы.tick(60)
     
     pygame.quit()
     sys.exit()
 
 if __name__ == "__main__":
-    main()
+    главная()
