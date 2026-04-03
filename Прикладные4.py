@@ -21,7 +21,7 @@ GOAL_RADIUS = 10
 MAX_ITER = 3000
 GOAL_SAMPLE_RATE = 0.05
 
-# ========== 1. Класс узла (Node) ==========
+#  1. Класс узла (Node) 
 class Node:
     def __init__(self, x, y):
         self.x = x
@@ -36,7 +36,7 @@ class Node:
     def distance_to(self, other):
         return math.hypot(self.x - other.x, self.y - other.y)
 
-# ========== 2. Класс графа (Graph) ==========
+#  2. Класс графа (Graph) 
 class Graph:
     def __init__(self):
         self.nodes = []
@@ -55,7 +55,7 @@ class Graph:
                 nearest_node = node
         return nearest_node
 
-# ========== 3. Класс робота (Robot) ==========
+#  3. Класс робота (Robot) 
 class Robot:
     def __init__(self, x, y):
         self.x = x
@@ -64,7 +64,7 @@ class Robot:
     def get_pos(self):
         return (self.x, self.y)
 
-# ========== 4. Класс препятствия (Obstacle) ==========
+#  4. Класс препятствия (Obstacle) 
 class Obstacle:
     def __init__(self, vertices):
         # vertices: список кортежей (x, y)
@@ -77,7 +77,7 @@ class Obstacle:
             edges.append((self.vertices[i], self.vertices[(i+1) % n]))
         return edges
 
-# ========== 5. Функция проверки пересечения отрезка и отрезка ==========
+#  5. Функция проверки пересечения отрезка и отрезка 
 def segments_intersect(p1, p2, p3, p4):
     def orientation(p, q, r):
         val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
@@ -93,7 +93,7 @@ def segments_intersect(p1, p2, p3, p4):
         return True
     return False
 
-# ========== 6. Проверка пересечения отрезка и многоугольника ==========
+#  6. Проверка пересечения отрезка и многоугольника 
 def segment_intersects_polygon(p1, p2, obstacle):
     edges = obstacle.get_edges()
     for edge in edges:
@@ -101,7 +101,7 @@ def segment_intersects_polygon(p1, p2, obstacle):
             return True
     return False
 
-# ========== 7. Функция построения ветви RRT ==========
+#  7. Функция построения ветви RRT 
 def rrt_extend(graph, target_point, obstacles, step_size=STEP_SIZE):
     # target_point - (x, y) случайной точки
     random_node = Node(target_point[0], target_point[1])
@@ -134,7 +134,7 @@ def rrt_extend(graph, target_point, obstacles, step_size=STEP_SIZE):
         return new_node
     return None
 
-# ========== 8. Формирование маршрута обратным проходом ==========
+#  8. Формирование маршрута обратным проходом 
 def get_path(goal_node):
     path = []
     node = goal_node
@@ -144,7 +144,7 @@ def get_path(goal_node):
     path.reverse()
     return path
 
-# ========== 9. Генерация случайных препятствий-многоугольников ==========
+#  9. Генерация случайных препятствий-многоугольников 
 def generate_random_polygon(center_x, center_y, avg_radius=40, num_vertices=5):
     angles = sorted([random.uniform(0, 2*math.pi) for _ in range(num_vertices)])
     vertices = []
@@ -155,11 +155,11 @@ def generate_random_polygon(center_x, center_y, avg_radius=40, num_vertices=5):
         vertices.append((x, y))
     return vertices
 
-# ========== 10. Проверка достижения цели ==========
+#  10. Проверка достижения цели 
 def is_goal_reached(node, goal_pos, threshold=GOAL_RADIUS):
     return math.hypot(node.x - goal_pos[0], node.y - goal_pos[1]) < threshold
 
-# ========== ГЛАВНАЯ ФУНКЦИЯ ==========
+#  ГЛАВНАЯ ФУНКЦИЯ 
 def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("RRT Path Planning for Mobile Robot")
