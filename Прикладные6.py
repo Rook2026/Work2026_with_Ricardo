@@ -16,7 +16,7 @@ LINE_COLOR = (0, 200, 0)
 FINAL_PATH_COLOR = (255, 0, 0)
 TEXT_COLOR = (0, 0, 0)
 
-# ========== 1. Класс целевой точки (Pt) ==========
+# 1. Класс целевой точки (Pt) 
 class Pt:
     def __init__(self, x, y, index=None):
         self.x = x
@@ -32,7 +32,7 @@ class Pt:
     def __repr__(self):
         return f"Pt({self.x}, {self.y})"
 
-# ========== 2. Класс маршрута (Route) ==========
+# 2. Класс маршрута (Route) 
 class Route:
     def __init__(self, points=None):
         self.points = points if points is not None else []
@@ -54,7 +54,7 @@ class Route:
     def __repr__(self):
         return f"Route({[p.index for p in self.points]})"
 
-# ========== 3. Класс узла графа декомпозиций (Node) ==========
+# 3. Класс узла графа декомпозиций (Node) 
 class Node:
     def __init__(self, matrix, upper_bound, fixed_edges=None, excluded_edges=None):
         """
@@ -73,7 +73,7 @@ class Node:
     def add_child(self, child):
         self.children.append(child)
 
-# ========== 4. Функция расчёта длины маршрута ==========
+# 4. Функция расчёта длины маршрута 
 def calculate_route_length(route_points, dist_matrix):
     """Расчёт длины маршрута по матрице расстояний"""
     if len(route_points) < 2:
@@ -84,7 +84,7 @@ def calculate_route_length(route_points, dist_matrix):
     length += dist_matrix[route_points[-1].index][route_points[0].index]
     return length
 
-# ========== 5. Функция расчёта верхней оценки (жадный алгоритм) ==========
+# 5. Функция расчёта верхней оценки (жадный алгоритм) 
 def calculate_upper_bound(matrix, points):
     """
     Вычисляет верхнюю оценку длины маршрута с помощью жадного алгоритма (ближайший сосед)
@@ -116,7 +116,7 @@ def calculate_upper_bound(matrix, points):
     total += matrix[path[-1]][path[0]]
     return total
 
-# ========== 6. Функция выбора наилучшей дуги для декомпозиции ==========
+# 6. Функция выбора наилучшей дуги для декомпозиции 
 def select_best_edge(matrix):
     """
     Выбирает дугу (ребро) для декомпозиции.
@@ -136,7 +136,7 @@ def select_best_edge(matrix):
                     best_i, best_j = i, j
     return (best_i, best_j)
 
-# ========== 7. Функция получения подматрицы с фиксированной дугой ==========
+# 7. Функция получения подматрицы с фиксированной дугой 
 def get_submatrix_with_edge(matrix, fixed_edge):
     """
     Возвращает новую матрицу, где зафиксировано включение ребра fixed_edge.
@@ -160,7 +160,7 @@ def get_submatrix_with_edge(matrix, fixed_edge):
 
     return new_matrix
 
-# ========== 8. Функция редукции матрицы (нижняя оценка) ==========
+# 8. Функция редукции матрицы (нижняя оценка) 
 def reduce_matrix(matrix):
     """
     Приводит матрицу: вычитает минимумы из строк и столбцов.
@@ -196,7 +196,7 @@ def reduce_matrix(matrix):
 
     return reduced, lower_bound
 
-# ========== 9. Рекурсивное формирование узлов декомпозиции ==========
+# 9. Рекурсивное формирование узлов декомпозиции 
 def branch_and_bound(root_node, points, original_matrix, best_solution):
     """
     Рекурсивный алгоритм ветвей и границ для решения TSP
@@ -291,7 +291,7 @@ def branch_and_bound(root_node, points, original_matrix, best_solution):
         root_node.add_child(excl_node)
         branch_and_bound(excl_node, points, original_matrix, best_solution)
 
-# ========== 10. Построение полного маршрута из индексов ==========
+# 10. Построение полного маршрута из индексов 
 def build_route_from_indices(indices, points):
     """Преобразует список индексов в список объектов Pt"""
     route = Route()
@@ -299,7 +299,7 @@ def build_route_from_indices(indices, points):
         route.add_point(points[idx])
     return route
 
-# ========== 11. Главная функция ==========
+# 11. Главная функция 
 def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("TSP - Branch and Bound Method")
