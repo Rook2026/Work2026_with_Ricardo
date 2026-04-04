@@ -313,7 +313,16 @@ def main():
         # Отображаем информацию
         error = math.hypot(landmark.estimated_x - landmark.true_x,
                           landmark.estimated_y - landmark.true_y)
-        
+        info_texts = [
+            f"Particle Filter - Landmark Mapping",
+            f"Итерация: {iteration}",
+            f"Истинное положение ориентира: ({landmark.true_x}, {landmark.true_y})",
+            f"Оцененное положение: ({landmark.estimated_x:.1f}, {landmark.estimated_y:.1f})",
+            f"Ошибка оценки: {error:.2f} пикс.",
+            f"Количество частиц: {len(particle_filter.particles)}",
+            f"Робот: ({robot.x:.1f}, {robot.y:.1f})",
+            f"Измеренная дальность: {measured_distance:.2f}"
+        ]
 
         y_offset = 10
         for text in info_texts:
