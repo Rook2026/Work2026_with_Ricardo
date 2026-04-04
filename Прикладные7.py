@@ -314,7 +314,6 @@ def main():
         error = math.hypot(landmark.estimated_x - landmark.true_x,
                           landmark.estimated_y - landmark.true_y)
         
-        ]
 
         y_offset = 10
         for text in info_texts:
