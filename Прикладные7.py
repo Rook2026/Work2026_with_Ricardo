@@ -3,354 +3,335 @@ import random
 import math
 import sys
 
-# Инициализация Pygame
+# ========== 1. Инициализация PyGame ==========
 pygame.init()
-
-# Константы окна
 WIDTH, HEIGHT = 800, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Моделирование картографирования: фильтр частиц")
+clock = pygame.time.Clock()
 FPS = 60
-BACKGROUND_COLOR = (255, 255, 255)
-ROBOT_COLOR = (0, 200, 0)
-ROBOT_TRAIL_COLOR = (0, 100, 0)
-LANDMARK_TRUE_COLOR = (255, 0, 0)      # истинное положение ориентира
-LANDMARK_EST_COLOR = (0, 0, 255)       # оцененное положение ориентира
-PARTICLE_COLOR = (200, 200, 200)
-TARGET_COLOR = (255, 165, 0)           # целевая точка
 
-# Параметры робота
-ROBOT_RADIUS = 8
-LANDMARK_RADIUS = 8
-PARTICLE_RADIUS = 2
+# Цвета
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+ORANGE = (255, 165, 0)
+GRAY = (200, 200, 200)
+YELLOW = (255, 255, 0)
+PURPLE = (128, 0, 128)
+LIGHT_GREEN = (150, 255, 150)
 
-# Параметры фильтра частиц
-NUM_PARTICLES = 200
-INITIAL_PARTICLE_SPREAD = 100          # начальный разброс частиц (пикселей)
-MEASUREMENT_NOISE = 15.0               # шум измерения дальности (пикселей)
-MOTION_NOISE = 3.0                     # шум движения (пикселей)
-RESAMPLE_THRESHOLD = 0.7               # порог репопуляции (доля эффективных частиц)
-
-# Параметры движения
-ROBOT_SPEED = 3.0
-TARGET_POS = (700, 100)                # конечная точка движения робота
-
-# ========== 1. Класс мобильного робота (Robot) ==========
 class Robot:
-    def __init__(self, x, y):
+    def __init__(self, x, y, vx, vy):
         self.x = x
         self.y = y
-        self.vx = 0.0
-        self.vy = 0.0
-        self.trail = [(x, y)]           # траектория движения
+        self.vx = vx
+        self.vy = vy
+        self.trail = []
 
-    def update(self, target_x, target_y):
-        """Движение робота к целевой точке с шумом"""
-        # Вычисляем направление к цели
-        dx = target_x - self.x
-        dy = target_y - self.y
-        dist = math.hypot(dx, dy)
-
-        if dist > 1:
-            # Нормализованное направление
-            self.vx = (dx / dist) * ROBOT_SPEED
-            self.vy = (dy / dist) * ROBOT_SPEED
-
-            # Добавляем шум движения
-            self.vx += random.gauss(0, MOTION_NOISE * 0.3)
-            self.vy += random.gauss(0, MOTION_NOISE * 0.3)
-
-            # Обновляем позицию
-            self.x += self.vx
-            self.y += self.vy
-
-        # Ограничиваем границами экрана
-        self.x = max(0, min(WIDTH, self.x))
-        self.y = max(0, min(HEIGHT, self.y))
-
-        # Добавляем точку в траекторию
+    def update(self, dt=1.0):
+        self.x += self.vx * dt
+        self.y += self.vy * dt
         self.trail.append((self.x, self.y))
         if len(self.trail) > 500:
             self.trail.pop(0)
 
-    def get_pos(self):
-        return (int(self.x), int(self.y))
+    def distance_to(self, landmark):
+        return math.hypot(self.x - landmark.x, self.y - landmark.y)
 
-    def distance_to(self, other_x, other_y):
-        return math.hypot(self.x - other_x, self.y - other_y)
+    def draw(self, surface):
+        if len(self.trail) > 1:
+            points = [(int(x), int(y)) for x, y in self.trail]
+            pygame.draw.lines(surface, GRAY, False, points, 2)
+        pygame.draw.circle(surface, BLUE, (int(self.x), int(self.y)), 10)
+        pygame.draw.circle(surface, BLACK, (int(self.x), int(self.y)), 10, 2)
 
-# ========== 2. Класс ориентира (Landmark) ==========
+
 class Landmark:
     def __init__(self, x, y):
-        self.true_x = x
-        self.true_y = y
-        self.estimated_x = x
-        self.estimated_y = y
-        self.particle_filter = None
+        self.x = x
+        self.y = y
 
-    def get_true_pos(self):
-        return (int(self.true_x), int(self.true_y))
+    def draw(self, surface):
+        pygame.draw.circle(surface, RED, (int(self.x), int(self.y)), 12)
+        pygame.draw.circle(surface, BLACK, (int(self.x), int(self.y)), 12, 3)
 
-    def get_estimated_pos(self):
-        return (int(self.estimated_x), int(self.estimated_y))
 
-# ========== 3. Класс фильтра частиц (ParticleFilter) ==========
+class Particle:
+    def __init__(self, x, y, weight=1.0):
+        self.x = x
+        self.y = y
+        self.weight = weight
+
+    def draw(self, surface):
+        intensity = min(200, int(50 + 150 * self.weight))
+        size = 3
+        color = (0, intensity, 0)
+        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), size)
+
+
 class ParticleFilter:
-    def __init__(self, robot, num_particles=NUM_PARTICLES):
-        self.particles = []          # список частиц [(x, y, weight), ...]
+    def __init__(self, num_particles, world_bounds=(WIDTH, HEIGHT)):
         self.num_particles = num_particles
-        self.robot = robot
+        self.particles = []
+        self.world_bounds = world_bounds
 
-    def initialize_particles(self, initial_guess_x, initial_guess_y, spread=INITIAL_PARTICLE_SPREAD):
-        """Генерация частиц в зоне предполагаемого расположения ориентира"""
+    def generate_particles_uniform(self):
+        """Равномерная генерация частиц по всей карте (лучше для глобальной сходимости)."""
         self.particles = []
         for _ in range(self.num_particles):
-            x = initial_guess_x + random.gauss(0, spread)
-            y = initial_guess_y + random.gauss(0, spread)
-            # Ограничиваем границами экрана
-            x = max(0, min(WIDTH, x))
-            y = max(0, min(HEIGHT, y))
-            self.particles.append([x, y, 1.0 / self.num_particles])  # [x, y, weight]
+            x = random.uniform(50, self.world_bounds[0] - 50)
+            y = random.uniform(50, self.world_bounds[1] - 50)
+            self.particles.append(Particle(x, y, 1.0 / self.num_particles))
 
-    def shift_particles(self):
-        """Смещение частиц сонаправленно с движением робота"""
-        # Частицы представляют положение ориентира в мире.
-        # При движении робота ориентир остаётся неподвижным,
-        # поэтому частицы НЕ должны смещаться.
-        # Вместо этого измерение дальности меняется из-за движения робота.
-        # Эта функция оставлена для совместимости с заданием,
-        # но фактически частицы остаются на месте.
-        pass
+    def move_particles_with_robot(self, robot_dx, robot_dy, process_noise=15.0):
+        """Смещение частиц с существенным шумом для исследования пространства."""
+        for p in self.particles:
+            p.x += robot_dx + random.gauss(0, process_noise)
+            p.y += robot_dy + random.gauss(0, process_noise)
+            p.x = max(10, min(self.world_bounds[0] - 10, p.x))
+            p.y = max(10, min(self.world_bounds[1] - 10, p.y))
 
-    def measure_distance(self, robot_x, robot_y, landmark_true_x, landmark_true_y):
-        """Зашумленное измерение дальности от робота до ориентира"""
-        true_distance = math.hypot(robot_x - landmark_true_x, robot_y - landmark_true_y)
-        noisy_distance = true_distance + random.gauss(0, MEASUREMENT_NOISE)
-        return max(0, noisy_distance)
+    def evaluate_weights(self, robot, measured_distance, sigma=50.0):
+        """Оценка весов на основе правдоподобия."""
+        for p in self.particles:
+            predicted_dist = math.hypot(robot.x - p.x, robot.y - p.y)
+            diff = predicted_dist - measured_distance
+            likelihood = math.exp(-(diff * diff) / (2 * sigma * sigma))
+            p.weight = likelihood + 1e-8  # добавляем малый вес для выживания
+        
+        total = sum(p.weight for p in self.particles)
+        if total > 0:
+            for p in self.particles:
+                p.weight /= total
 
-    def update_weights(self, measured_distance):
-        """Оценка частиц по критерию рассогласования прогнозируемых и фактических измерений"""
-        for i, particle in enumerate(self.particles):
-            # Прогнозируемая дальность от робота до частицы (гипотетический ориентир)
-            predicted_distance = math.hypot(self.robot.x - particle[0],
-                                            self.robot.y - particle[1])
-
-            # Ошибка между измеренным и прогнозируемым расстоянием
-            error = abs(predicted_distance - measured_distance)
-
-            # Вес частицы (вероятность) - используем нормальное распределение
-            # Чем меньше ошибка, тем больше вес
-            likelihood = math.exp(-(error ** 2) / (2 * MEASUREMENT_NOISE ** 2))
-
-            # Обновляем вес (с учётом предыдущего веса)
-            particle[2] = particle[2] * likelihood
-
-        # Нормализация весов (сумма весов = 1)
-        total_weight = sum(p[2] for p in self.particles)
-        if total_weight > 0:
-            for particle in self.particles:
-                particle[2] /= total_weight
-
-    def resample_particles(self):
-        """Репопуляция частиц с фильтрацией по величине оценок (систематическая выборка)"""
-        # Вычисляем эффективное количество частиц
-        weights = [p[2] for p in self.particles]
-        eff = 1.0 / sum(w ** 2 for w in weights)
-
-        # Если эффективное количество слишком мало, выполняем ресемплинг
-        if eff < RESAMPLE_THRESHOLD * self.num_particles:
-            new_particles = []
-
-            # Систематическая выборка
-            step = 1.0 / self.num_particles
-            r = random.uniform(0, step)
-            cumulative_weight = 0
-            index = 0
-
-            # Сортируем частицы для кумулятивной суммы (можно и без сортировки)
-            # Создаём список кумулятивных весов
-            cumulative_weights = []
-            cum_sum = 0
-            for w in weights:
-                cum_sum += w
-                cumulative_weights.append(cum_sum)
-
-            for i in range(self.num_particles):
-                target = r + i * step
-                while index < len(cumulative_weights) and cumulative_weights[index] < target:
-                    index += 1
-                if index >= len(self.particles):
-                    index = len(self.particles) - 1
-                # Копируем частицу с небольшим шумом (диверсификация)
-                px, py, _ = self.particles[index]
-                px += random.gauss(0, MOTION_NOISE)
-                py += random.gauss(0, MOTION_NOISE)
-                px = max(0, min(WIDTH, px))
-                py = max(0, min(HEIGHT, py))
-                new_particles.append([px, py, 1.0 / self.num_particles])
-
-            self.particles = new_particles
-
-    def get_estimated_position(self):
-        """Расчёт предполагаемого положения ориентира как геометрического центра набора гипотез"""
+    def resample(self):
+        """Стратифицированный ресемплинг с добавлением случайных частиц (10% для разнообразия)."""
         if not self.particles:
-            return (WIDTH // 2, HEIGHT // 2)
+            return
+        
+        weights = [p.weight for p in self.particles]
+        
+        # Стратифицированная выборка
+        new_particles = []
+        step = 1.0 / self.num_particles
+        
+        for i in range(self.num_particles):
+            r = random.uniform(i * step, (i + 1) * step)
+            cumulative = 0
+            for j, p in enumerate(self.particles):
+                cumulative += weights[j]
+                if r < cumulative:
+                    # Копируем частицу с небольшим шумом
+                    new_x = p.x + random.gauss(0, 8)
+                    new_y = p.y + random.gauss(0, 8)
+                    new_x = max(10, min(self.world_bounds[0] - 10, new_x))
+                    new_y = max(10, min(self.world_bounds[1] - 10, new_y))
+                    new_particles.append(Particle(new_x, new_y, 1.0 / self.num_particles))
+                    break
+        
+        # Добавляем 10% случайных частиц для предотвращения вырождения
+        num_random = int(self.num_particles * 0.1)
+        for _ in range(num_random):
+            x = random.uniform(50, self.world_bounds[0] - 50)
+            y = random.uniform(50, self.world_bounds[1] - 50)
+            new_particles[random.randint(0, len(new_particles)-1)] = Particle(x, y, 1.0 / self.num_particles)
+        
+        self.particles = new_particles
 
-        # Взвешенное среднее (центр масс)
-        total_weight = sum(p[2] for p in self.particles)
-        if total_weight == 0:
-            total_weight = 1
+    def estimate_position(self):
+        """Оценка как среднее с отсечением выбросов."""
+        # Берём 50% лучших частиц для устойчивости
+        sorted_particles = sorted(self.particles, key=lambda p: p.weight, reverse=True)
+        top_n = max(1, int(self.num_particles * 0.5))
+        
+        sum_x = sum(p.x for p in sorted_particles[:top_n])
+        sum_y = sum(p.y for p in sorted_particles[:top_n])
+        
+        return sum_x / top_n, sum_y / top_n
 
-        est_x = sum(p[0] * p[2] for p in self.particles) / total_weight
-        est_y = sum(p[1] * p[2] for p in self.particles) / total_weight
+    def draw(self, surface):
+        for p in self.particles:
+            p.draw(surface)
 
-        return (int(est_x), int(est_y))
 
-    def draw(self, screen):
-        """Отрисовка частиц"""
-        for particle in self.particles:
-            # Интенсивность зависит от веса
-            intensity = min(255, int(particle[2] * 500))
-            color = (intensity, intensity, intensity)
-            pygame.draw.circle(screen, color,
-                             (int(particle[0]), int(particle[1])),
-                             PARTICLE_RADIUS)
+def noisy_distance_measurement(robot, landmark, noise_std=25.0):
+    true_dist = robot.distance_to(landmark)
+    noise = random.gauss(0, noise_std)
+    return max(0.0, true_dist + noise)
 
-# ========== 4. Главная функция ==========
+
 def main():
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Particle Filter - Landmark Mapping")
-    clock = pygame.time.Clock()
-
-    # Входные параметры
-    start_pos = (100, 100)      # начальные координаты робота
-    target_pos = TARGET_POS     # конечные координаты робота (700, 100)
-    landmark_true_pos = (400, 300)  # истинное положение ориентира
-
-    # Создание объектов
-    robot = Robot(start_pos[0], start_pos[1])
-    landmark = Landmark(landmark_true_pos[0], landmark_true_pos[1])
-
-    # Создание фильтра частиц
-    particle_filter = ParticleFilter(robot, NUM_PARTICLES)
-
-    # Инициализация частиц (начальное предположение - центр экрана с разбросом)
-    initial_guess = (WIDTH // 2, HEIGHT // 2)
-    particle_filter.initialize_particles(initial_guess[0], initial_guess[1],
-                                         INITIAL_PARTICLE_SPREAD)
-
-    # Переменные для отображения
+    robot = Robot(x=100, y=100, vx=0, vy=0)
+    landmark = Landmark(x=400, y=300)
+    
+    # Маршрут, который ОБЯЗАТЕЛЬНО пройдёт вокруг ориентира со всех сторон
+    waypoints = [
+        (100, 100),    # старт (северо-запад)
+        (700, 100),    # северо-восток
+        (700, 500),    # юго-восток
+        (100, 500),    # юго-запад
+        (100, 100),    # обратно
+        (400, 80),     # над ориентиром
+        (400, 520),    # под ориентиром
+        (80, 300),     # слева от ориентира
+        (720, 300),    # справа от ориентира
+        (400, 300),    # прямо к ориентиру (для финальной точности)
+    ]
+    
+    pf = ParticleFilter(num_particles=500)  # больше частиц = лучше
+    pf.generate_particles_uniform()  # равномерно по всей карте
+    
+    current_wp = 1
+    speed = 5.0
+    waypoint_threshold = 20
+    
+    frame = 0
+    measurement_interval = 10  # чаще измерения
+    
+    font = pygame.font.SysFont('monospace', 14)
+    font_large = pygame.font.SysFont('monospace', 16, bold=True)
+    
     running = True
-    iteration = 0
-    font = pygame.font.Font(None, 20)
-
-    # Основной цикл
+    paused = False
+    
+    print("=" * 50)
+    print("МОДЕЛИРОВАНИЕ ЗАПУЩЕНО")
+    print(f"Истинный ориентир: ({landmark.x}, {landmark.y})")
+    print("Фильтр частиц: 500 частиц, равномерная инициализация")
+    print("=" * 50)
+    
+    error_history = []
+    
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
-        # Движение робота к целевой точке
-        robot.update(target_pos[0], target_pos[1])
-
-        # Проверка достижения цели
-        dist_to_target = math.hypot(robot.x - target_pos[0], robot.y - target_pos[1])
-
-        # Если робот достиг цели, завершаем движение
-        if dist_to_target < ROBOT_RADIUS * 2:
-            # Останавливаем робота
-            robot.vx = 0
-            robot.vy = 0
-
-        # Измерение дальности до ориентира (с шумом)
-        measured_distance = particle_filter.measure_distance(
-            robot.x, robot.y,
-            landmark.true_x, landmark.true_y
-        )
-
-        # Обновление весов частиц
-        particle_filter.update_weights(measured_distance)
-
-        # Ресемплинг (репопуляция) частиц
-        particle_filter.resample_particles()
-
-        # Получение оценки положения ориентира
-        est_x, est_y = particle_filter.get_estimated_position()
-        landmark.estimated_x = est_x
-        landmark.estimated_y = est_y
-
-        # ========== ВИЗУАЛИЗАЦИЯ ==========
-        screen.fill(BACKGROUND_COLOR)
-
-        # Рисуем траекторию робота
-        if len(robot.trail) > 1:
-            for i in range(len(robot.trail) - 1):
-                pygame.draw.line(screen, ROBOT_TRAIL_COLOR,
-                                 (int(robot.trail[i][0]), int(robot.trail[i][1])),
-                                 (int(robot.trail[i+1][0]), int(robot.trail[i+1][1])), 2)
-
-        # Рисуем частицы
-        particle_filter.draw(screen)
-
-        # Рисуем истинное положение ориентира (красный)
-        pygame.draw.circle(screen, LANDMARK_TRUE_COLOR,
-                         landmark.get_true_pos(), LANDMARK_RADIUS)
-        pygame.draw.circle(screen, (150, 0, 0),
-                         landmark.get_true_pos(), LANDMARK_RADIUS - 2)
-
-        # Рисуем оцененное положение ориентира (синий)
-        pygame.draw.circle(screen, LANDMARK_EST_COLOR,
-                         landmark.get_estimated_pos(), LANDMARK_RADIUS)
-        pygame.draw.circle(screen, (0, 0, 150),
-                         landmark.get_estimated_pos(), LANDMARK_RADIUS - 2)
-
-        # Рисуем робота (зелёный)
-        pygame.draw.circle(screen, ROBOT_COLOR, robot.get_pos(), ROBOT_RADIUS)
-        pygame.draw.circle(screen, (0, 100, 0), robot.get_pos(), ROBOT_RADIUS - 2)
-
-        # Рисуем целевую точку (оранжевый)
-        pygame.draw.circle(screen, TARGET_COLOR, target_pos, 8)
-        pygame.draw.circle(screen, (200, 100, 0), target_pos, 6)
-
-        # Отображаем информацию
-        error = math.hypot(landmark.estimated_x - landmark.true_x,
-                          landmark.estimated_y - landmark.true_y)
-        info_texts = [
-            f"Particle Filter - Landmark Mapping",
-            f"Итерация: {iteration}",
-            f"Истинное положение ориентира: ({landmark.true_x}, {landmark.true_y})",
-            f"Оцененное положение: ({landmark.estimated_x:.1f}, {landmark.estimated_y:.1f})",
-            f"Ошибка оценки: {error:.2f} пикс.",
-            f"Количество частиц: {len(particle_filter.particles)}",
-            f"Робот: ({robot.x:.1f}, {robot.y:.1f})",
-            f"Измеренная дальность: {measured_distance:.2f}"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    paused = not paused
+                elif event.key == pygame.K_r:
+                    pf.generate_particles_uniform()
+                    robot = Robot(x=100, y=100, vx=0, vy=0)
+                    current_wp = 1
+                    error_history = []
+                    print("СБРОС: частицы перегенерированы равномерно")
+        
+        if not paused:
+            # Движение робота
+            dx = waypoints[current_wp][0] - robot.x
+            dy = waypoints[current_wp][1] - robot.y
+            dist_to_wp = math.hypot(dx, dy)
+            
+            if dist_to_wp < waypoint_threshold:
+                current_wp = (current_wp + 1) % len(waypoints)
+                if current_wp == 0 and len(waypoints) > 1:
+                    current_wp = 1
+            else:
+                if dist_to_wp > 0:
+                    robot.vx = dx / dist_to_wp * speed
+                    robot.vy = dy / dist_to_wp * speed
+                robot.update(1.0)
+            
+            # Фильтр частиц
+            pf.move_particles_with_robot(robot.vx * 1.0, robot.vy * 1.0, process_noise=12.0)
+            
+            if frame % measurement_interval == 0:
+                meas_dist = noisy_distance_measurement(robot, landmark, noise_std=30.0)
+                pf.evaluate_weights(robot, meas_dist, sigma=60.0)
+                pf.resample()
+            
+            est_x, est_y = pf.estimate_position()
+            error = math.hypot(est_x - landmark.x, est_y - landmark.y)
+            error_history.append(error)
+            if len(error_history) > 100:
+                error_history.pop(0)
+            
+            frame += 1
+            
+            # Вывод в консоль каждые 30 кадров
+            if frame % 30 == 0:
+                avg_error = sum(error_history[-30:]) / min(30, len(error_history))
+                print(f"[Кадр {frame:4d}] Робот: ({int(robot.x):3d},{int(robot.y):3d}) | "
+                      f"Оценка: ({int(est_x):3d},{int(est_y):3d}) | "
+                      f"Ошибка: {error:5.1f} px | Средняя: {avg_error:5.1f} px")
+        
+        # Отрисовка
+        screen.fill(WHITE)
+        
+        # Сетка
+        for x in range(0, WIDTH, 100):
+            pygame.draw.line(screen, (230, 230, 230), (x, 0), (x, HEIGHT), 1)
+        for y in range(0, HEIGHT, 100):
+            pygame.draw.line(screen, (230, 230, 230), (0, y), (WIDTH, y), 1)
+        
+        pf.draw(screen)
+        landmark.draw(screen)
+        
+        est_x, est_y = pf.estimate_position()
+        
+        # Оценка фильтра
+        pygame.draw.circle(screen, ORANGE, (int(est_x), int(est_y)), 14)
+        pygame.draw.circle(screen, BLACK, (int(est_x), int(est_y)), 14, 2)
+        
+        # Линия ошибки
+        pygame.draw.line(screen, YELLOW, (est_x, est_y), (landmark.x, landmark.y), 2)
+        
+        robot.draw(screen)
+        
+        # Текст
+        error = math.hypot(est_x - landmark.x, est_y - landmark.y)
+        texts = [
+            f"РОБОТ: ({int(robot.x)}, {int(robot.y)})",
+            f"ИСТИННЫЙ ОРИЕНТИР: ({landmark.x}, {landmark.y})",
+            f"ОЦЕНКА ФИЛЬТРА: ({int(est_x)}, {int(est_y)})",
+            f"ОШИБКА ОЦЕНКИ: {error:.1f} px",
+            f"ЧАСТИЦ: {pf.num_particles}",
+            f"СТАТУС: {'ПАУЗА' if paused else 'РАБОТА'}"
         ]
-
-        y_offset = 10
-        for text in info_texts:
-            surface = font.render(text, True, (0, 0, 0))
-            screen.blit(surface, (10, y_offset))
-            y_offset += 20
-
+        
+        for i, text in enumerate(texts):
+            color = RED if i == 1 else ORANGE if i == 2 else BLACK
+            if i == 3:
+                if error < 30:
+                    color = GREEN
+                elif error < 80:
+                    color = ORANGE
+                else:
+                    color = RED
+            surf = font_large if i == 2 else font
+            screen.blit(surf.render(text, True, color), (10, 10 + i * 22))
+        
+        # График ошибки
+        if len(error_history) > 1:
+            graph_x = WIDTH - 210
+            graph_y = 10
+            graph_w = 200
+            graph_h = 60
+            pygame.draw.rect(screen, (240, 240, 240), (graph_x, graph_y, graph_w, graph_h))
+            pygame.draw.rect(screen, BLACK, (graph_x, graph_y, graph_w, graph_h), 1)
+            
+            max_error = max(error_history[-graph_w:]) if error_history else 1
+            if max_error < 1:
+                max_error = 1
+            
+            for i, err in enumerate(error_history[-graph_w:]):
+                bar_height = min(graph_h - 2, int((err / max_error) * (graph_h - 2)))
+                bar_color = GREEN if err < 30 else ORANGE if err < 80 else RED
+                pygame.draw.rect(screen, bar_color, 
+                               (graph_x + i + 1, graph_y + graph_h - bar_height - 1, 1, bar_height))
+            
+            err_text = font.render(f"Ошибка: {error:.0f}", True, BLACK)
+            screen.blit(err_text, (graph_x + 5, graph_y + 5))
+        
         pygame.display.flip()
         clock.tick(FPS)
-        iteration += 1
-
-        # Если робот достиг цели, можно остановить обновление, но продолжаем отображать
-        if dist_to_target < ROBOT_RADIUS * 2 and iteration > 100:
-            # Ждём 2 секунды для просмотра результата
-            pygame.time.wait(2000)
-            running = False
-
-    # Финальная пауза для просмотра результата
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                waiting = False
-        pygame.display.flip()
-        clock.tick(FPS)
-
+    
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     main()

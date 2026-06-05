@@ -1,206 +1,216 @@
 import pygame
 import sys
 from collections import deque
-import copy
 
-# Инициализация Pygame
-pygame.init()
-
-# Параметры окна
+# Константы
 WIDTH, HEIGHT = 800, 600
-FPS = 30
-WHITE = (255, 255, 255)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-BLACK = (0, 0, 0)
-GRAY = (200, 200, 200)
+MIN_X, MAX_X = 0, 20
+SCALE = (WIDTH - 200) / (MAX_X - MIN_X)
+OFFSET_X = 100
+ROBOT_COLOR = (0, 255, 0)
+OBJECT_COLOR = (255, 0, 0)
+BG_COLOR = (30, 30, 30)
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Robot Planning")
-clock = pygame.time.Clock()
-
-font = pygame.font.Font(None, 24)
-big_font = pygame.font.Font(None, 36)
-
-
+# ---------------------- Классы ----------------------
 class Robot:
     def __init__(self, x):
         self.x = x
-        self.y = HEIGHT // 2
-
-    def draw(self):
-        pygame.draw.circle(screen, RED, (self.x, self.y), 20)
-        pygame.draw.circle(screen, BLACK, (self.x, self.y), 20, 2)
-
-    def copy(self):
-        return Robot(self.x)
-
 
 class Obj:
-    def __init__(self, name, x, y_offset):
+    def __init__(self, name, x):
         self.name = name
         self.x = x
-        self.y = HEIGHT // 2 + y_offset
 
-    def draw(self):
-        pygame.draw.rect(screen, BLUE, (self.x - 15, self.y - 15, 30, 30))
-        pygame.draw.rect(screen, BLACK, (self.x - 15, self.y - 15, 30, 30), 2)
-        label = font.render(self.name, True, WHITE)
-        screen.blit(label, (self.x - 8, self.y - 8))
+class Graph:
+    def __init__(self):
+        self.nodes = set()
+        self.edges = []   # (from, to, action)
 
-    def copy(self):
-        return Obj(self.name, self.x, self.y - HEIGHT // 2)
+# ----------- Вспомогательные функции -----------
+def get_nearest_object(robot, objects):
+    nearest = None
+    min_dist = float('inf')
+    for obj in objects:
+        dist = abs(robot.x - obj.x)
+        if dist < min_dist:
+            min_dist = dist
+            nearest = obj
+    return nearest
 
+def get_state(robot, objects):
+    return (robot.x, tuple(obj.x for obj in objects))
 
-def get_state_key(robot, objects):
-    """Возвращает кортеж состояния"""
-    obj_positions = tuple(obj.x for obj in objects)
-    return (robot.x, obj_positions)
+def set_state(state, robot, objects):
+    robot.x = state[0]
+    for obj, x in zip(objects, state[1]):
+        obj.x = x
 
+def apply_action(action, robot, objects):
+    """Применяет действие без проверок коллизий (объекты могут накладываться)."""
+    old_state = get_state(robot, objects)
 
-def find_nearest_object(robot, objects):
-    """Находит ближайший к роботу объект"""
-    if not objects:
+    if action == "GoRight":
+        if robot.x < MAX_X:
+            robot.x += 1
+        else:
+            return None
+    elif action == "GoLeft":
+        if robot.x > MIN_X:
+            robot.x -= 1
+        else:
+            return None
+    elif action == "MoveRight":
+        obj = get_nearest_object(robot, objects)
+        if obj and obj.x < MAX_X:
+            obj.x += 1
+        else:
+            return None
+    elif action == "MoveLeft":
+        obj = get_nearest_object(robot, objects)
+        if obj and obj.x > MIN_X:
+            obj.x -= 1
+        else:
+            return None
+    else:
         return None
-    return min(objects, key=lambda obj: abs(obj.x - robot.x))
 
+    new_state = get_state(robot, objects)
+    set_state(old_state, robot, objects)   # откат
+    return new_state
 
-def main():
-    # Начальные параметры
-    robot = Robot(400)
-    objects = [
-        Obj("A", 100, -40),
-        Obj("B", 200, -20),
-        Obj("C", 300, 0),
-        Obj("D", 400, 20),
-    ]
+def is_goal(state, names, goal_order):
+    """Цель: порядок имен после сортировки по координатам = goal_order."""
+    _, coords = state
+    items = sorted(((coords[i], names[i]) for i in range(len(names))), key=lambda t: t[0])
+    order = [name for _, name in items]
+    return order == goal_order
 
-    # Целевое состояние для отображения
-    target_obj_positions = (400, 300, 200, 100)
+def bfs_plan(initial_state, goal_check, max_states=5_000_000):
+    graph = Graph()
+    parent = {}
+    action_from = {}
+    queue = deque([initial_state])
+    parent[initial_state] = None
+    graph.nodes.add(initial_state)
+    visited = 0
 
-    # Сообщение о действии
-    action_message = ""
-    message_timer = 0
+    while queue and visited < max_states:
+        state = queue.popleft()
+        visited += 1
+        if visited % 100_000 == 0:
+            print(f"  Посещено {visited} состояний (в очереди {len(queue)})")
 
-    running = True
-    while running:
+        if goal_check(state):
+            # Восстановление плана
+            plan = []
+            cur = state
+            while parent[cur] is not None:
+                plan.append(action_from[cur])
+                cur = parent[cur]
+            plan.reverse()
+            return graph, plan, state
+
+        for act in ("GoRight", "GoLeft", "MoveRight", "MoveLeft"):
+            temp_robot = Robot(state[0])
+            temp_objs = [Obj(name, x) for name, x in zip(["A","B","C","D"], state[1])]
+            new_state = apply_action(act, temp_robot, temp_objs)
+            if new_state is not None and new_state not in parent:
+                parent[new_state] = state
+                action_from[new_state] = act
+                graph.nodes.add(new_state)
+                graph.edges.append((state, new_state, act))
+                queue.append(new_state)
+
+    print(f"  BFS завершён после {visited} состояний")
+    return None, None, None
+
+# ------------------ Визуализация ------------------
+def draw_scene(screen, robot, objects, font):
+    screen.fill(BG_COLOR)
+    for x in range(MIN_X, MAX_X + 1):
+        sx = OFFSET_X + x * SCALE
+        pygame.draw.line(screen, (100,100,100), (sx, 100), (sx, 500), 2)
+    rx = OFFSET_X + robot.x * SCALE
+    pygame.draw.circle(screen, ROBOT_COLOR, (int(rx), 300), 20)
+    for obj in objects:
+        ox = OFFSET_X + obj.x * SCALE
+        pygame.draw.rect(screen, OBJECT_COLOR, (ox - 15, 270, 30, 60))
+        text = font.render(obj.name, True, (255,255,255))
+        screen.blit(text, (ox - 8, 275))
+    pygame.display.flip()
+
+def animate_plan(robot, objects, plan, screen, font):
+    clock = pygame.time.Clock()
+    for act in plan:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                pygame.quit()
+                sys.exit()
+        if act == "GoRight" and robot.x < MAX_X:
+            robot.x += 1
+        elif act == "GoLeft" and robot.x > MIN_X:
+            robot.x -= 1
+        elif act == "MoveRight":
+            obj = get_nearest_object(robot, objects)
+            if obj and obj.x < MAX_X:
+                obj.x += 1
+        elif act == "MoveLeft":
+            obj = get_nearest_object(robot, objects)
+            if obj and obj.x > MIN_X:
+                obj.x -= 1
+        draw_scene(screen, robot, objects, font)
+        clock.tick(5)
+        pygame.time.wait(200)
 
-            elif event.type == pygame.KEYDOWN:
-                action_message = ""
+# ------------------ Главная функция ------------------
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Планирование робота (МИРЭА)")
+    font = pygame.font.SysFont("Arial", 24)
 
-                if event.key == pygame.K_RIGHT:
-                    robot.x += 50
-                    action_message = "Робот переместился вправо"
-                    message_timer = 60
+    robot = Robot(0)
+    objects = [Obj("A", 1), Obj("B", 2), Obj("C", 3), Obj("D", 4)]
+    initial_state = get_state(robot, objects)
+    names = ["A","B","C","D"]
+    goal_order = ["D","C","B","A"]
 
-                elif event.key == pygame.K_LEFT:
-                    robot.x -= 50
-                    action_message = "Робот переместился влево"
-                    message_timer = 60
+    print("Поиск плана (BFS) – может занять до 1 минуты...")
+    graph, plan, goal_state = bfs_plan(initial_state,
+                                       lambda s: is_goal(s, names, goal_order),
+                                       max_states=5_000_000)
 
-                elif event.key == pygame.K_PERIOD:  # Клавиша >
-                    nearest = find_nearest_object(robot, objects)
-                    if nearest:
-                        nearest.x += 50
-                        action_message = f"Объект {nearest.name} перемещён вправо"
-                        message_timer = 60
-                    else:
-                        action_message = "Нет объектов"
-                        message_timer = 60
+    if plan is None:
+        print("План не найден. Увеличьте MAX_X или max_states.")
+        pygame.quit()
+        sys.exit()
 
-                elif event.key == pygame.K_COMMA:  # Клавиша <
-                    nearest = find_nearest_object(robot, objects)
-                    if nearest:
-                        nearest.x -= 50
-                        action_message = f"Объект {nearest.name} перемещён влево"
-                        message_timer = 60
-                    else:
-                        action_message = "Нет объектов"
-                        message_timer = 60
+    print(f"\n=== ГРАФ СОБЫТИЙ ===")
+    print(f"Всего узлов: {len(graph.nodes)}")
+    print(f"Всего переходов: {len(graph.edges)}")
+    print("Пример переходов (первые 10):")
+    for i, (f, t, a) in enumerate(graph.edges[:10]):
+        print(f"  {f} --{a}--> {t}")
+    if len(graph.edges) > 10:
+        print(f"  ... и ещё {len(graph.edges)-10}")
 
-                elif event.key == pygame.K_r:
-                    # Сброс в начальное состояние
-                    robot.x = 400
-                    objects[0].x = 100
-                    objects[1].x = 200
-                    objects[2].x = 300
-                    objects[3].x = 400
-                    action_message = "Сброс в начальное состояние"
-                    message_timer = 60
+    print(f"\n=== ПЛАН ДЕЙСТВИЙ ({len(plan)} шагов) ===")
+    for i, act in enumerate(plan, 1):
+        print(f"{i:3d}. {act}")
 
-                elif event.key == pygame.K_SPACE:
-                    # Проверка достижения цели
-                    current_positions = (objects[0].x, objects[1].x, objects[2].x, objects[3].x)
-                    if current_positions == target_obj_positions:
-                        action_message = "ЦЕЛЬ ДОСТИГНУТА! Объекты в порядке D, C, B, A"
-                    else:
-                        action_message = f"Цель не достигнута. Нужно: D=400, C=300, B=200, A=100"
-                    message_timer = 120
+    # Сброс для анимации
+    robot = Robot(0)
+    objects = [Obj("A",1), Obj("B",2), Obj("C",3), Obj("D",4)]
+    draw_scene(screen, robot, objects, font)
+    input("\nНажмите Enter в консоли для запуска анимации...")
+    animate_plan(robot, objects, plan, screen, font)
 
-        # Уменьшение таймера сообщения
-        if message_timer > 0:
-            message_timer -= 1
-        else:
-            action_message = ""
-
-        # Отрисовка
-        screen.fill(WHITE)
-
-        # Рисуем сетку
-        for x in range(0, WIDTH, 50):
-            pygame.draw.line(screen, GRAY, (x, 0), (x, HEIGHT), 1)
-
-        # Рисуем объекты
-        for obj in objects:
-            obj.draw()
-
-        # Рисуем робота
-        robot.draw()
-
-        # Отображение информации
-        y = 10
-        info_texts = [
-            "УПРАВЛЕНИЕ:",
-            "  → / ← - перемещение робота",
-            "  > / < - перемещение ближайшего объекта",
-            "  R - сброс",
-            "  SPACE - проверка цели",
-            "",
-            f"Robot x: {robot.x}",
-            f"A x: {objects[0].x}",
-            f"B x: {objects[1].x}",
-            f"C x: {objects[2].x}",
-            f"D x: {objects[3].x}",
-            "",
-            f"ЦЕЛЬ: D=400, C=300, B=200, A=100",
-        ]
-
-        for text in info_texts:
-            rendered = font.render(text, True, BLACK)
-            screen.blit(rendered, (10, y))
-            y += 22
-
-        # Отображение сообщения о действии
-        if action_message:
-            msg_rendered = big_font.render(action_message, True, GREEN if "ЦЕЛЬ" in action_message else RED)
-            msg_rect = msg_rendered.get_rect(center=(WIDTH // 2, HEIGHT - 50))
-            screen.blit(msg_rendered, msg_rect)
-
-        # Подсветка ближайшего объекта
-        nearest = find_nearest_object(robot, objects)
-        if nearest:
-            pygame.draw.circle(screen, GREEN, (nearest.x, nearest.y), 25, 3)
-
-        pygame.display.flip()
-        clock.tick(FPS)
-
-    pygame.quit()
-    sys.exit()
-
+    # Ожидание закрытия окна
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
 if __name__ == "__main__":
     main()
